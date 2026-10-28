@@ -1,0 +1,36 @@
+﻿# Secretos locales
+.env
+.env.*
+!.env.example
+
+# Archivos privados subidos y documentos generados
+storage/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Respaldos locales (scripts/backup.ps1)
+backups/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
+
+# Documentos de clientes (datos reales; no se suben)
+*.doc
+*.docx

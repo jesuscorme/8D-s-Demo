@@ -1,0 +1,74 @@
+# PROGRESS — 8D PRO
+
+**Última actualización:** 2026-10-27 (sesión 2, bloque 2) · **Versión:** 1.0.0 · **Estado:** MVP D0–D8 integrado, listo para piloto controlado
+**Avance funcional estimado del MVP (fases 0–11):** ≈ 95 % (cálculo abajo). Fase 12 (integraciones) fuera de alcance.
+
+## Verificación real
+
+| Comprobación | Resultado |
+|---|---|
+| `scripts/setup-db.ps1` + `migrate.ps1` (0001–0006) en `d8_demo` | ✅ aplicadas |
+| `pytest -q` (apps/api) | ✅ **61 pasadas** (unitarias + integración en BD temporal `d8_demo_test`) |
+| `scripts/e2e.ps1` (Playwright en Edge, BD y storage temporales) | ✅ **2 pasadas**: alta de caso → D0 con requisito visible → envío → aprobación por gerente → persistencia tras recargar → PDF real → bitácora; consulta solo lectura, 403 en API, reportes, lecciones, cierre de sesión |
+| `npx tsc --noEmit` / `npm run build` (apps/web) | ✅ sin errores / 13 rutas |
+| Recorrido por el proxy (login, cookie, CSRF, logout) | ✅ |
+| Recorrido en Edge (Playwright): inicio, casos, alta de caso, D5–D8, emisión de PDF, bitácora, reportes, móvil 390 px | ✅ sin errores de consola (solo 404 de favicon) |
+| `backup.ps1` → `restore.ps1 -Database d8_restore_check` | ✅ manifiesto verificado; base restaurada hasta 0006 |
+| Lint | — no configurado (ESLint desactivado en el build; tipos estrictos con `tsc`) |
+
+Prueba integral `test_complete_8d_cycle`: crear caso → equipo → D0–D4 (contención, alerta emitida, Ishikawa, causa validada con evidencia) → D5 correctiva ligada a causa raíz + criterio aprobado → D6 implementación con evidencia aprobada por otra persona, verificación con dato faltante (solo «datos insuficientes»), verificación eficaz → D7 preventiva con excepción justificada + AMEF actualizado → D8 lección aprobada → caso cerrado → lección publicada, reutilizada en otro caso y revisada (rev. 2 sustituye a rev. 1) → 8D completo PDF (rev. 1 → rev. 2 sustituida y conservada), avance, auditoría, lección PDF, Excel del caso, de casos y de bitácora → integridad (detecta archivo alterado) → bitácora con `request_id`/`txid` → KPIs → reapertura por D8.
+Negativas: permisos (403 en cada aprobación/emisión/exportación), datos incompletos (409 con detalle), archivos inválidos (422), acceso entre organizaciones (404), fallo de generación de PDF (500 sin registro), bloqueo de login (429), inmutabilidad en BD.
+
+## Estado por fase
+
+| Fase | Estado | Notas |
+|---|---|---|
+| 0 Arquitectura | ✅ | Docs actualizados; pendientes de negocio en DECISIONS.md |
+| 1 Interfaz y navegación | ✅ | Todas las secciones con datos reales |
+| 2 Identidad y roles | ✅ | Cambio de contraseña (cierra otras sesiones), restablecimiento por admin, alta de plantas, roles por planta, bloqueo de login. Sin recuperación por correo (requiere correo/SSO) |
+| 3 Casos y flujo D0–D8 | ✅ | Requisitos, bloqueos, aprobación, reapertura, cierre |
+| 4 D3 y alerta | ✅ | Logo de la organización en todos los PDF (admin lo sube) |
+| 5 Ishikawa y biblioteca | ✅ | Subcausas en árbol dentro de cada categoría |
+| 6 Validación de causas | ✅ | 5 porqués estructurados en D4 |
+| 7 Acciones | ✅ | Tipos, vínculo causa-acción-evidencia, aprobación con segregación, excepción justificada, vencimientos |
+| 8 Eficacia | ✅ | Criterio configurable aprobado, denominador explícito, datos faltantes ≠ 0, días sin producción, historial inmutable |
+| 9 Lecciones | ✅ | Estados, revisión por persona distinta, revisiones, búsqueda/filtros, reutilización trazada, PDF |
+| 10 Documentos, Excel, KPIs, auditoría | ✅ | 6 entregables reales, vista previa, versiones, integridad, 9 KPIs definidos |
+| 11 Pruebas, seguridad, piloto | 🟡 85 % | E2E automatizado y pruebas de concurrencia/doble envío hechas. Falta: piloto con casos reales y ejecución en un servidor de CI |
+| 12 Integraciones | ⬜ | Interfaces documentadas en ARCHITECTURE.md |
+
+**Cálculo:** pesos F0 5, F1 6, F2 9, F3 12, F4 9, F5 7, F6 7, F7 10, F8 7, F9 8, F10 10, F11 10 × avance (F0 100, F1 100, F2 100, F3 100, F4 100, F5 100, F6 100, F7 100, F8 100, F9 100, F10 95, F11 85) ≈ **98 %**; se declara ≈ 95 % porque el piloto con usuarios reales no se ha hecho.
+
+## Cambios de esta sesión
+- **Migraciones:** `0005_alert_photos_cascade.sql` (defecto encontrado al ejecutar las pruebas), `0006_actions_effectiveness_lessons.sql`.
+- **API nuevos:** `routers/actions.py`, `routers/lessons.py`, `routers/reports.py`, `effectiveness_rules.py`, `pdf_reports.py`, `excel.py`.
+- **API modificados:** `workflow.py` (D5–D8 y cierre), `cases.py`, `permissions.py`, `auth.py` (eventos de seguridad), `audit.py` (`txid`, eventos de seguridad), `routers/auth_routes.py` (bloqueo), `routers/containment.py` (vínculos de adjuntos), `routers/alerts.py` (descarga autorizada y auditada), `routers/core.py` (alertas del tablero), `routers/cases_routes.py` (fecha objetivo), `storage.py` (verificación, Excel), `main.py` (request-id), `requirements.txt` (+openpyxl).
+- **Web:** `components/case/Actions.tsx` (nuevo), `Workflow.tsx`, `Tabs.tsx`, `DisciplineForm.tsx`, páginas `lecciones`, `lecciones/[id]`, `reportes`, inicio; `lib/types.ts`, `lib/labels.ts`, `Shell.tsx`.
+- **Pruebas:** `test_effectiveness_reports.py`, `integration/test_full_cycle.py`; actualizadas `test_workflow.py`, `test_units.py`, `integration/test_flow.py`.
+- **Scripts:** `backup.ps1`, `restore.ps1`, `start-web.ps1`. **Docs:** README, ARCHITECTURE, DATA_MODEL, SECURITY, DECISIONS, USER_GUIDE.
+- **Datos:** BD `d8_demo` con seed (organización, 2 plantas, 6 usuarios). Los 2 casos de prueba creados durante la verificación se borraron; sus eventos de bitácora permanecen (solo inserción) y el siguiente folio será `…-0003`.
+
+## Limitaciones conocidas y pendientes reales
+1. Piloto con casos representativos (Fase 11) — requiere usuarios del cliente.
+2. Ejecutar `pytest` + `scripts/e2e.ps1` en un servidor de CI (hoy se ejecutan en este equipo). Sin pruebas de carga.
+3. Recuperación de contraseña por correo (depende de la integración de correo o SSO).
+4. Plantillas PDF solo en español.
+5. Idioma: el contenido de las lecciones admite es/en; la interfaz y las plantillas solo están en español.
+6. Firma electrónica legal no implementada (ver SECURITY.md).
+7. Limpieza de archivos huérfanos de `storage/` y política de retención.
+8. Puertos 3000/8000 ocupados en este equipo por la demo SPC: 8D PRO usa 3010/8010.
+
+## Bloque 2 de la sesión 2
+- Migración `0007_org_logo.sql`. API: `POST /auth/password`, restablecimiento y plantas visibles en `PATCH /admin/users`, `POST /admin/plants`, logo (`POST /admin/organization/logo`, `GET /organization/logo`) dibujado en alerta y reportes.
+- Web: diálogo «Contraseña», administración (plantas, plantas por usuario, restablecer, logo), subcausas, 5 porqués.
+- Pruebas: `integration/test_admin_concurrency.py` (8 altas en paralelo con folios consecutivos únicos; doble envío y doble aprobación simultáneos → 200/409 con un solo evento), `apps/web/e2e/flow.spec.ts`, `scripts/e2e.ps1`.
+- Scripts nuevos guardados con BOM UTF-8 (PowerShell 5.1 mostraba mal los acentos).
+
+## Siguiente bloque recomendado
+Piloto controlado: cargar 3–5 casos reales con usuarios de calidad, recoger defectos y decidir los pendientes P1–P7 de
+DECISIONS.md. En paralelo, E2E en CI (Playwright en Edge) a partir del recorrido usado en esta sesión.
+
+## Bloque 3 (2026-10-27)
+- Lecciones con **antes y después visual**: fotos con leyenda por lado (migraciones `0008_lesson_photos.sql`, `0009_lesson_photos_cascade.sql`), obligatorias para enviar a revisión, copiadas en cada nueva revisión e inmutables fuera de borrador (disparador). Sección «Antes y después» en pantalla y en el PDF (una foto por celda; corrige un fallo de reportlab al partir celdas con varias imágenes).
+- Se importó un 8D real de cliente en la base local (sus datos y el documento original no se versionan). Lecciones publicadas en rev. 2 con fotos.
+- `pytest`: **62 pasadas**.

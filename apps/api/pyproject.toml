@@ -1,0 +1,10 @@
+[project]
+name = "d8-pro-api"
+version = "0.5.0"
+description = "API de 8D PRO"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
