@@ -88,7 +88,8 @@ class Demo:
         case = self.call("ing", "POST", "/cases", json={
             "plant_id": self.plants["PLT1"], "title": TITLES[0], "severity": "high", "source_type": "customer_complaint",
             "customer_name": "General Motors", "product_name": "Carcasa de aluminio", "part_number": "4410-A",
-            "process_name": "Maquinado CNC", "lot_number": "L-2026-0915", "target_close_date": "2026-10-31"})
+            "process_name": "Maquinado CNC", "lot_number": "L-2026-0915", "target_close_date": "2026-10-31",
+            "main_defect": "Rebaba", "market_segment": "OEM"})
         cid = case["id"]
         self.content(cid, "D0", emergency_response="Bloqueo de 3 lotes en almacén y en tránsito; aviso al cliente en 24 h.",
                      justification="Reclamación de cliente con riesgo de interferencia en ensamble; defecto recurrente.")
@@ -393,7 +394,7 @@ class Demo:
         case = self.call("ing", "POST", "/cases", json={
             "plant_id": self.plants["PLT2"], "title": TITLES[1], "severity": "critical", "source_type": "internal",
             "product_name": "Manguera de enfriamiento", "part_number": "7720-B", "process_name": "Ensamble",
-            "customer_name": "Toyota", "target_close_date": "2026-10-20"})
+            "customer_name": "Toyota", "target_close_date": "2026-10-20", "main_defect": "Fuga"})
         cid = case["id"]
         self.content(cid, "D0", emergency_response="Prueba de fuga 100% en línea antes de empaque.",
                      justification="Riesgo de fuga de refrigerante; severidad crítica.")
@@ -457,7 +458,7 @@ class Demo:
         case = self.call("prod", "POST", "/cases", json={
             "plant_id": self.plants["PLT1"], "title": TITLES[2], "severity": "medium", "source_type": "audit",
             "product_name": "Soporte de tablero", "part_number": "3305-C", "process_name": "Ensamble",
-            "target_close_date": "2026-11-30"})
+            "target_close_date": "2026-11-30", "main_defect": "Faltante"})
         cid = case["id"]
         self.content(cid, "D0", emergency_response="Revisión 100% del turno afectado.", justification="Hallazgo de auditoría de producto.")
         self.approve(cid, "D0")
