@@ -41,6 +41,10 @@ def snapshot(conn: psycopg.Connection, case: dict) -> workflow.Snapshot:
         system_updates=conn.execute("select status from system_updates where case_id = %s", (cid,)).fetchall(),
         lessons=[r["status"] for r in conn.execute("select status from lessons_learned where source_case_id = %s",
                                                     (cid,)).fetchall()],
+        containment_record=conn.execute("select started_at, ended_at, result from case_containment where case_id = %s",
+                                        (cid,)).fetchone(),
+        containment_lots=conn.execute("select count(*) as n from containment_lots where case_id = %s",
+                                      (cid,)).fetchone()["n"],
     )
 
 

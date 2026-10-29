@@ -434,6 +434,98 @@ def verify_attachment(attachment_id: UUID, p: Principal = Depends(require("case.
     return result
 
 
+# ---- Concentrado de 8D (registro con hitos) -----------------------------------------------------
+
+CASE_STATUS = {"draft": "Borrador", "open": "Abierto", "in_progress": "En proceso", "pending_review": "En revisión",
+               "approved": "Aprobado", "closed": "Cerrado", "cancelled": "Cancelado"}
+MILESTONE_LABEL = {"on_time": "A tiempo", "late": "Tarde", "pending": "En plazo", "overdue": "Vencido"}
+
+
+class RegisterFilters(BaseModel):
+    q: str | None = Field(None, max_length=100)
+    case_type: Literal["internal", "external"] | None = None
+    status: str | None = Field(None, max_length=30)
+    plant_id: UUID | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+
+
+def register_rows(conn, p: Principal, f: RegisterFilters) -> list[dict]:
+    where, args = ["c.organization_id = %(org)s"], {"org": p.organization_id}
+    if p.plant_ids is not None:
+        where.append("c.plant_id = any(%(plants)s)")
+        args["plants"] = list(p.plant_ids)
+    for cond, key, value in (("c.case_type = %(case_type)s", "case_type", f.case_type), ("c.status = %(status)s", "status", f.status),
+                             ("c.plant_id = %(plant)s", "plant", f.plant_id), ("c.report_date >= %(from)s", "from", f.date_from),
+                             ("c.report_date <= %(to)s", "to", f.date_to)):
+        if value:
+            where.append(cond)
+            args[key] = value
+    if f.q:
+        where.append("""(c.folio ilike %(q)s or c.title ilike %(q)s or coalesce(c.part_number,'') ilike %(q)s
+                         or coalesce(c.customer_name,'') ilike %(q)s or coalesce(c.main_defect,'') ilike %(q)s)""")
+        args["q"] = f"%{f.q.strip()}%"
+    rows = conn.execute(
+        f"""select c.id, c.folio, c.report_date, c.case_type, c.customer_name, c.title, c.market_segment, c.main_defect,
+                   c.part_number, c.detected_quantity, c.affected_quantity, c.status, c.closed_at::date as closed_on,
+                   c.target_close_date, c.is_demo, pl.code as plant_code,
+                   (select u.display_name from case_team t join users u on u.id = t.user_id
+                     where t.case_id = c.id and t.team_role = 'leader' limit 1) as leader,
+                   (select string_agg(x.potential_cause, '; ' order by x.created_at) from ishikawa_causes x
+                     where x.case_id = c.id and x.investigation_status = 'root_cause') as root_cause,
+                   (select jsonb_object_agg(d.discipline_code, d.approved_at::date) from case_disciplines d
+                     where d.case_id = c.id and d.status = 'approved') as approved,
+                   (select min(d.discipline_code) from case_disciplines d where d.case_id = c.id and d.status <> 'approved') as current_discipline
+            from cases_8d c join plants pl on pl.id = c.plant_id
+            where {' and '.join(where)} order by c.report_date desc, c.folio desc limit 1000""", args).fetchall()
+    today = date.today()
+    out = []
+    for r in rows:
+        approved = {k: date.fromisoformat(v) for k, v in (r.pop("approved") or {}).items()}
+        ms = workflow.milestones(r["report_date"], approved, today) if r["status"] != "cancelled" else []
+        end = r["closed_on"] or today
+        overdue = r["status"] not in ("closed", "cancelled") and (
+            any(m["status"] == "overdue" for m in ms) or (r["target_close_date"] is not None and r["target_close_date"] < today))
+        out.append({**r, "month": r["report_date"].strftime("%Y-%m"), "milestones": ms, "overdue": overdue,
+                    "days_open": (end - r["report_date"]).days, "status_label": CASE_STATUS.get(r["status"], r["status"])})
+    return out
+
+
+@router.get("/reports/register")
+def register(q: str | None = Query(None, max_length=100), case_type: Literal["internal", "external"] | None = None,
+             status: str | None = None, plant_id: UUID | None = None, date_from: date | None = None, date_to: date | None = None,
+             p: Principal = Depends(require("case.read")), conn: psycopg.Connection = Depends(get_conn)):
+    rows = register_rows(conn, p, RegisterFilters(q=q, case_type=case_type, status=status, plant_id=plant_id,
+                                                  date_from=date_from, date_to=date_to))
+    return {"rows": rows, "milestones": [{"key": k, "label": l, "days": d} for k, l, _, d in workflow.MILESTONES]}
+
+
+@router.post("/exports/register", status_code=201)
+def export_register(body: RegisterFilters, p: Principal = Depends(require("report.export")),
+                    conn: psycopg.Connection = Depends(get_conn)):
+    rows = register_rows(conn, p, body)
+    header = ["#", "Mes", "Fecha de reporte", "Tipo", "Cliente", "Descripción de la falla", "OEM | OES | AM", "Defecto principal",
+              "Número de parte", "Cantidad", "Causa raíz", "Fecha de cierre", "Líder", "Estado 8D",
+              *[f"{label} — real" for _, label, _, _ in workflow.MILESTONES], "Días para cerrar", "Folio", "Planta"]
+    data = []
+    for i, r in enumerate(rows, start=1):
+        ms = {m["key"]: m for m in r["milestones"]}
+        cells = [f"{ms[k]['done'] or '—'} ({MILESTONE_LABEL[ms[k]['status']]}, meta {ms[k]['due']})" if k in ms else "—"
+                 for k, _, _, _ in workflow.MILESTONES]
+        data.append([i, r["month"], r["report_date"], "Interno" if r["case_type"] == "internal" else "Externo",
+                     r["customer_name"], r["title"], r["market_segment"], r["main_defect"], r["part_number"],
+                     r["detected_quantity"], r["root_cause"], r["closed_on"], r["leader"], r["status_label"], *cells,
+                     r["days_open"], r["folio"], r["plant_code"]])
+    filters = ", ".join(f"{k}={v}" for k, v in body.model_dump(exclude_none=True).items()) or "sin filtros"
+    scope = f"doc:excel:register:{p.user_id}"
+    revision = _next_number(conn, p.organization_id, scope)
+    meta = _meta(conn, p, "excel_export", "Concentrado 8D", revision, "", None)
+    meta["filters"] = filters
+    content = _render(excel.workbook, [("Concentrado", header, data)], meta)
+    return issue_document(conn, p, "excel_export", content, storage.XLSX, f"Concentrado_8D_{date.today():%Y%m%d}_rev{revision}.xlsx",
+                          scope, revision=revision, metadata={"export": "register", "filters": filters, "rows": len(rows)})
+
+
 # ---- Indicadores -----------------------------------------------------------------------------
 
 KPI_DEFINITIONS = [

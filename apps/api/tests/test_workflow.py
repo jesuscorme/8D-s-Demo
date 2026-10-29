@@ -64,17 +64,32 @@ def test_d1_requires_three_members_leader_and_owner():
     assert labels == {"owner": True, "leader": False, "team_size": False, "owner_in_team": False}
 
 
-def test_d2_customer_required_only_for_customer_complaints():
-    internal = snap(case=full_case(source_type="internal", customer_name=None))
+def test_d2_customer_required_only_for_external_8d():
+    internal = snap(case=full_case(case_type="internal", customer_name=None))
     assert "customer_name" not in {r["key"] for r in item(internal, "D2")["requirements"]}
-    complaint = snap(case=full_case(customer_name=" "))
+    complaint = snap(case=full_case(case_type="external", customer_name=" "))
     assert not next(r for r in item(complaint, "D2")["requirements"] if r["key"] == "customer_name")["met"]
 
 
 def test_d3_needs_verified_actions_and_issued_alert():
     s = snap(containment=[{"status": "implemented", "evidence_notes": "x"}], issued_alerts=0)
     met = {r["key"]: r["met"] for r in item(s, "D3")["requirements"]}
-    assert met == {"has_actions": True, "all_verified": False, "alert_issued": False}
+    assert met == {"started": False, "lots": False, "ended": False, "has_actions": True, "all_verified": False,
+                   "alert_issued": False}
+    s = snap(containment_record={"started_at": "t", "ended_at": "t2", "result": "effective"}, containment_lots=2)
+    assert all(r["met"] for r in item(s, "D3")["requirements"])
+    open_record = snap(containment_record={"started_at": "t", "ended_at": None, "result": None}, containment_lots=1)
+    assert not {r["key"]: r["met"] for r in item(open_record, "D3")["requirements"]}["ended"]
+
+
+def test_milestones_from_report_date():
+    from datetime import date
+    ms = {m["key"]: m for m in workflow.milestones(date(2026, 10, 1), {"D3": date(2026, 10, 2), "D4": date(2026, 10, 5)},
+                                                   date(2026, 10, 20))}
+    assert ms["containment"]["status"] == "on_time" and str(ms["containment"]["due"]) == "2026-10-02"
+    assert ms["root_cause"]["status"] == "late"          # meta 3-oct, cumplido 5-oct
+    assert ms["actions"]["status"] == "overdue"          # meta 8-oct, sin cumplir al 20-oct
+    assert workflow.milestones(date(2026, 10, 18), {}, date(2026, 10, 20))[3]["status"] == "pending"
     cancelled_only = snap(containment=[{"status": "cancelled", "evidence_notes": None}])
     assert not item(cancelled_only, "D3")["requirements"][0]["met"]
 

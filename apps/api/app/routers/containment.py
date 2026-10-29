@@ -1,14 +1,15 @@
 """D3: acciones de contención y archivos adjuntos (evidencias y fotos)."""
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Literal
 from uuid import UUID
 
 import psycopg
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app import audit, storage, workflow
+from app import audit, notify, storage, workflow
+from app.db import setting
 from app.auth import Principal, get_conn, require
 from app.cases import ensure_section_editable, load_case, refresh_case_status, rule, same_org_user, snapshot, touch
 from app.errors import ApiError, invalid, not_found
@@ -125,6 +126,179 @@ def update_containment(action_id: UUID, body: ContainmentPatch, p: Principal = D
         touch(conn, action["case_id"])
         audit.record(conn, p, "containment.updated", "containment_action", action_id, action["case_id"], old=old, new=new)
     return _list(conn, action["case_id"])
+
+
+# ---- Registro de contención (inicio, lotes, fin y resultado) ------------------------------------
+
+class StartIn(BaseModel):
+    started_at: datetime | None = None
+
+
+class LotIn(BaseModel):
+    lot_number: str = Field(min_length=1, max_length=100)
+    location: str | None = Field(None, max_length=200)
+    quantity_inspected: int = Field(ge=0, le=100_000_000)
+    quantity_rejected: int = Field(0, ge=0, le=100_000_000)
+    disposition: Literal["released", "rework", "scrap", "returned", "on_hold"] | None = None
+    notes: str | None = Field(None, max_length=1000)
+
+
+class EndIn(BaseModel):
+    result: Literal["effective", "not_effective"]
+    result_notes: str = Field(min_length=5, max_length=2000)
+    ended_at: datetime | None = None
+
+
+def _record(conn, case_id: UUID) -> dict:
+    record = conn.execute(
+        """select r.*, s.display_name as started_by_name, e.display_name as ended_by_name from case_containment r
+           join users s on s.id = r.started_by left join users e on e.id = r.ended_by where r.case_id = %s""",
+        (case_id,)).fetchone()
+    lots = conn.execute(
+        """select l.*, u.display_name as created_by_name from containment_lots l join users u on u.id = l.created_by
+           where l.case_id = %s order by l.created_at""", (case_id,)).fetchall()
+    inspected = sum(x["quantity_inspected"] for x in lots)
+    rejected = sum(x["quantity_rejected"] for x in lots)
+    emails = conn.execute(
+        """select id, event, to_addresses, subject, status, last_error, created_at, sent_at, transport from email_outbox
+           where case_id = %s order by created_at desc""", (case_id,)).fetchall()
+    return {"record": record, "lots": lots, "emails": emails,
+            "totals": {"lots": len(lots), "inspected": inspected, "rejected": rejected, "ok": inspected - rejected}}
+
+
+def _issued_alert_documents(conn, case_id: UUID) -> list[dict]:
+    return conn.execute(
+        """select d.id as document_id, d.file_name from quality_alerts a join documents d on d.alert_id = a.id
+           where a.case_id = %s and a.status = 'issued' and d.status = 'issued' order by a.alert_number""",
+        (case_id,)).fetchall()
+
+
+def queue_logistics_email(conn, p: Principal, case: dict, record: dict) -> UUID:
+    """Aviso a logística: detener el material para re-inspección, con la alerta de calidad vigente en PDF."""
+    docs = _issued_alert_documents(conn, case["id"])
+    if not docs:
+        raise ApiError(409, "alert_required", "Emite primero la alerta de calidad: se adjunta en PDF al aviso a logística.")
+    to = notify.recipients(conn, p.organization_id, case["plant_id"], "containment_started")
+    if not to:
+        raise ApiError(409, "no_recipients", "No hay correos de logística configurados. Agrégalos en Administración › Notificaciones.")
+    owner = conn.execute("select email from users where id = %s", (case["owner_user_id"],)).fetchone()
+    plant = conn.execute("select code, name from plants where id = %s", (case["plant_id"],)).fetchone()
+    kind = "Externo (reclamación del cliente)" if case["case_type"] == "external" else "Interno"
+    link = f"{setting('APP_BASE_URL', 'http://localhost:3010').rstrip('/')}/casos/{case['id']}"
+    text, body = notify.render(
+        f"Detener material para re-inspección — {case['folio']}",
+        f"Se inició la contención del 8D {case['folio']}. Detengan el material indicado en almacén, tránsito y embarques "
+        "hasta su re-inspección y liberación por calidad.",
+        [("Folio", case["folio"]), ("Tipo de 8D", kind), ("Problema", case["title"]),
+         ("Cliente", case["customer_name"] or "—"), ("Número de parte", case["part_number"] or "—"),
+         ("Producto", case["product_name"] or "—"), ("Lote", case["lot_number"] or "—"),
+         ("Cantidad afectada", f"{case['affected_quantity']:,}" if case["affected_quantity"] is not None else "—"),
+         ("Planta", f"{plant['code']} — {plant['name']}"),
+         ("Inicio de contención", record["started_at"].strftime("%Y-%m-%d %H:%M")), ("Inició", p.display_name)],
+        "Detener el material y no embarcarlo hasta que calidad lo libere.", link)
+    return notify.queue(conn, p.organization_id, p.user_id, case["id"], "containment_started",
+                        to + ([owner["email"]] if owner else []),
+                        f"[8D PRO] Detener material — {case['folio']} · {case['part_number'] or case['title']}", text, body,
+                        [{"document_id": str(d["document_id"]), "file_name": d["file_name"]} for d in docs])
+
+
+@router.get("/cases/{case_id}/containment-record")
+def get_record(case_id: UUID, p: Principal = Depends(require("case.read")), conn: psycopg.Connection = Depends(get_conn)):
+    load_case(conn, p, case_id)
+    return _record(conn, case_id)
+
+
+@router.post("/cases/{case_id}/containment-record/start")
+def start_containment(case_id: UUID, body: StartIn, background: BackgroundTasks, request: Request,
+                      p: Principal = Depends(require("containment.edit")), conn: psycopg.Connection = Depends(get_conn)):
+    case = load_case(conn, p, case_id, for_update=True)
+    ensure_section_editable(conn, case, "D3", "La contención")
+    if conn.execute("select 1 from case_containment where case_id = %s", (case_id,)).fetchone():
+        raise ApiError(409, "already_started", "La contención ya se inició.")
+    started = body.started_at or datetime.now(timezone.utc)
+    if started > datetime.now(timezone.utc):
+        raise invalid("El inicio de la contención no puede ser futuro.")
+    record = conn.execute("""insert into case_containment (organization_id, case_id, started_at, started_by)
+                             values (%s, %s, %s, %s) returning *""", (p.organization_id, case_id, started, p.user_id)).fetchone()
+    email_id = queue_logistics_email(conn, p, case, record)
+    conn.execute("""update case_disciplines set status = 'in_progress', updated_at = now()
+                    where case_id = %s and discipline_code = 'D3' and status = 'not_started'""", (case_id,))
+    touch(conn, case_id)
+    audit.record(conn, p, "containment.started", "case_containment", case_id, case_id,
+                 new={"started_at": started, "email_id": str(email_id)})
+    refresh_case_status(conn, case_id)
+    background.add_task(notify.send_pending, request.app.state.db, [email_id])
+    return _record(conn, case_id)
+
+
+@router.post("/cases/{case_id}/containment-record/notify")
+def resend_logistics(case_id: UUID, background: BackgroundTasks, request: Request,
+                     p: Principal = Depends(require("containment.edit")), conn: psycopg.Connection = Depends(get_conn)):
+    case = load_case(conn, p, case_id, for_update=True)
+    record = conn.execute("select * from case_containment where case_id = %s", (case_id,)).fetchone()
+    if not record:
+        raise ApiError(409, "not_started", "Inicia la contención primero.")
+    email_id = queue_logistics_email(conn, p, case, record)
+    audit.record(conn, p, "containment.notified", "case_containment", case_id, case_id, new={"email_id": str(email_id)})
+    background.add_task(notify.send_pending, request.app.state.db, [email_id])
+    return _record(conn, case_id)
+
+
+def _open_record(conn, p: Principal, case_id: UUID) -> tuple[dict, dict]:
+    case = load_case(conn, p, case_id, for_update=True)
+    ensure_section_editable(conn, case, "D3", "La contención")
+    record = conn.execute("select * from case_containment where case_id = %s", (case_id,)).fetchone()
+    if not record:
+        raise ApiError(409, "not_started", "Inicia la contención primero (se avisa a logística).")
+    if record["ended_at"]:
+        raise ApiError(409, "already_ended", "La contención ya se finalizó.")
+    return case, record
+
+
+@router.post("/cases/{case_id}/containment-lots", status_code=201)
+def add_lot(case_id: UUID, body: LotIn, p: Principal = Depends(require("containment.edit")),
+            conn: psycopg.Connection = Depends(get_conn)):
+    _open_record(conn, p, case_id)
+    if body.quantity_rejected > body.quantity_inspected:
+        raise invalid("Las piezas rechazadas no pueden superar las revisadas.")
+    data = body.model_dump()
+    row = conn.execute(
+        f"""insert into containment_lots (organization_id, case_id, created_by, {', '.join(data)})
+            values (%s, %s, %s, {', '.join(['%s'] * len(data))}) returning id""",
+        [p.organization_id, case_id, p.user_id, *data.values()]).fetchone()
+    touch(conn, case_id)
+    audit.record(conn, p, "containment.lot_added", "containment_lot", row["id"], case_id, new=data)
+    return _record(conn, case_id)
+
+
+@router.delete("/containment-lots/{lot_id}")
+def delete_lot(lot_id: UUID, p: Principal = Depends(require("containment.edit")), conn: psycopg.Connection = Depends(get_conn)):
+    lot = conn.execute("select * from containment_lots where id = %s and organization_id = %s", (lot_id, p.organization_id)).fetchone()
+    if not lot:
+        raise not_found("Lote")
+    _open_record(conn, p, lot["case_id"])
+    conn.execute("delete from containment_lots where id = %s", (lot_id,))
+    audit.record(conn, p, "containment.lot_deleted", "containment_lot", lot_id, lot["case_id"],
+                 old={"lot_number": lot["lot_number"], "quantity_inspected": lot["quantity_inspected"]})
+    return _record(conn, lot["case_id"])
+
+
+@router.post("/cases/{case_id}/containment-record/end")
+def end_containment(case_id: UUID, body: EndIn, p: Principal = Depends(require("containment.edit")),
+                    conn: psycopg.Connection = Depends(get_conn)):
+    _, record = _open_record(conn, p, case_id)
+    if not conn.execute("select 1 from containment_lots where case_id = %s", (case_id,)).fetchone():
+        raise ApiError(409, "lots_required", "Registra al menos un lote revisado antes de finalizar.")
+    ended = body.ended_at or datetime.now(timezone.utc)
+    if ended < record["started_at"] or ended > datetime.now(timezone.utc):
+        raise invalid("El fin de la contención debe estar entre su inicio y ahora.")
+    conn.execute("""update case_containment set ended_at = %s, ended_by = %s, result = %s, result_notes = %s, updated_at = now()
+                    where case_id = %s""", (ended, p.user_id, body.result, body.result_notes.strip(), case_id))
+    touch(conn, case_id)
+    audit.record(conn, p, "containment.ended", "case_containment", case_id, case_id,
+                 new={"ended_at": ended, "result": body.result, "result_notes": body.result_notes.strip()})
+    refresh_case_status(conn, case_id)
+    return _record(conn, case_id)
 
 
 # ---- Archivos ---------------------------------------------------------------------------------

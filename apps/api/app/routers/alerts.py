@@ -5,12 +5,12 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import psycopg
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import Response
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
-from app import audit, pdf_alert, storage, workflow
+from app import audit, notify, pdf_alert, storage, workflow
 from app.auth import Principal, get_conn, require
 from app.cases import load_case, rule, same_org_user, snapshot, touch
 from app.db import setting
@@ -29,7 +29,8 @@ REQUIRED_TO_ISSUE = {
 
 
 class AlertIn(BaseModel):
-    failure_type: Literal["internal", "external"]
+    # Sin indicar: la del caso (8D interno → falla interna; externo → falla externa).
+    failure_type: Literal["internal", "external"] | None = None
     title: str | None = Field(None, max_length=200)
 
 
@@ -129,16 +130,17 @@ def create_alert(case_id: UUID, body: AlertIn, p: Principal = Depends(require("a
         "containment_summary": "\n".join(f"• {a['description']}" for a in actions) or None,
         "responsible_user_id": case["owner_user_id"],
     }
+    failure_type = body.failure_type or case["case_type"]
     number = _next_number(conn, p.organization_id, "alert")
     row = conn.execute(
         """insert into quality_alerts (organization_id, case_id, alert_number, failure_type, created_by, title,
                                        what_happened, when_happened, affected_quantity, containment_summary,
                                        responsible_user_id)
            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
-        (p.organization_id, case_id, number, body.failure_type, p.user_id, *prefill.values())).fetchone()
+        (p.organization_id, case_id, number, failure_type, p.user_id, *prefill.values())).fetchone()
     touch(conn, case_id)
     audit.record(conn, p, "alert.created", "quality_alert", row["id"], case_id,
-                 new={"alert_number": number, "revision": 1, "failure_type": body.failure_type})
+                 new={"alert_number": number, "revision": 1, "failure_type": failure_type})
     return _detail(conn, p, row["id"])
 
 
@@ -192,8 +194,35 @@ def set_photos(alert_id: UUID, body: PhotosIn, p: Principal = Depends(require("a
     return _detail(conn, p, alert_id)
 
 
+def queue_alert_email(conn, p: Principal, alert: dict, case: dict, document_id: UUID, file_name: str,
+                      responsible: str | None) -> UUID | None:
+    """Alerta emitida → equipo del 8D y lista de distribución, con el PDF adjunto."""
+    team = [r["email"] for r in conn.execute(
+        "select u.email from case_team t join users u on u.id = t.user_id where t.case_id = %s and u.is_active", (case["id"],))]
+    to = team + notify.recipients(conn, p.organization_id, case["plant_id"], "alert_issued")
+    if not to:
+        return None
+    folio = f"QA-{alert['alert_number']:04d}"
+    link = f"{setting('APP_BASE_URL', 'http://localhost:3010').rstrip('/')}/alertas/{alert['id']}"
+    text, body = notify.render(
+        f"Alerta de calidad {folio} rev. {alert['revision']} — {alert['title']}",
+        f"Se emitió la alerta de calidad {folio} (falla {'externa' if alert['failure_type'] == 'external' else 'interna'}) "
+        f"del 8D {case['folio']}. Difúndela con el personal involucrado; el PDF va adjunto.",
+        [("Caso 8D", case["folio"]), ("Número de parte", case["part_number"] or "—"),
+         ("¿Qué pasó?", alert["what_happened"] or "—"), ("¿Cuándo?", alert["when_happened"] or "—"),
+         ("¿Dónde?", alert["where_happened"] or "—"), ("¿A quién afecta?", alert["who_is_affected"] or "—"),
+         ("¿Cómo se detectó?", alert["how_detected"] or "—"),
+         ("Cantidad afectada", f"{alert['affected_quantity']:,}" if alert["affected_quantity"] is not None else "—"),
+         ("Contención", alert["containment_summary"] or "—"), ("Responsable", responsible or "—"), ("Emitió", p.display_name)],
+        None, link)
+    return notify.queue(conn, p.organization_id, p.user_id, case["id"], "alert_issued", to,
+                        f"[8D PRO] Alerta de calidad {folio} rev. {alert['revision']} — {case['folio']}", text, body,
+                        [{"document_id": str(document_id), "file_name": file_name}])
+
+
 @router.post("/alerts/{alert_id}/issue")
-def issue(alert_id: UUID, p: Principal = Depends(require("alert.issue")), conn: psycopg.Connection = Depends(get_conn)):
+def issue(alert_id: UUID, background: BackgroundTasks, request: Request, p: Principal = Depends(require("alert.issue")),
+          conn: psycopg.Connection = Depends(get_conn)):
     alert = _draft(conn, p, alert_id)
     detail = _detail(conn, p, alert_id)
     if detail["missing_to_issue"]:
@@ -229,9 +258,13 @@ def issue(alert_id: UUID, p: Principal = Depends(require("alert.issue")), conn: 
         conn.execute("update documents set status = 'superseded', superseded_by = %s where id = %s",
                      (doc["id"], previous["document_id"]))
     touch(conn, alert["case_id"])
+    email_id = queue_alert_email(conn, p, alert, case, doc["id"], f"{folio}_rev{alert['revision']}.pdf", detail["responsible_name"])
     audit.record(conn, p, "alert.issued", "quality_alert", alert_id, alert["case_id"],
-                 new={"folio": folio, "revision": alert["revision"], "document_id": doc["id"], "sha256": digest},
+                 new={"folio": folio, "revision": alert["revision"], "document_id": doc["id"], "sha256": digest,
+                      "email_id": str(email_id) if email_id else None},
                  metadata={"superseded_alert_id": previous["id"] if previous else None})
+    if email_id:
+        background.add_task(notify.send_pending, request.app.state.db, [email_id])
     return _detail(conn, p, alert_id)
 
 

@@ -72,3 +72,13 @@ DECISIONS.md. En paralelo, E2E en CI (Playwright en Edge) a partir del recorrido
 - Lecciones con **antes y después visual**: fotos con leyenda por lado (migraciones `0008_lesson_photos.sql`, `0009_lesson_photos_cascade.sql`), obligatorias para enviar a revisión, copiadas en cada nueva revisión e inmutables fuera de borrador (disparador). Sección «Antes y después» en pantalla y en el PDF (una foto por celda; corrige un fallo de reportlab al partir celdas con varias imágenes).
 - Se importó un 8D real de cliente en la base local (sus datos y el documento original no se versionan). Lecciones publicadas en rev. 2 con fotos.
 - `pytest`: **62 pasadas**.
+
+## Bloque 4 (2026-10-29)
+- **8D internos y externos**: `cases_8d.case_type` obligatorio en la interfaz (la API lo deduce del origen si falta); orígenes por tipo; cliente obligatorio solo en externos; la alerta toma el tipo del caso. Campos del concentrado: `report_date`, `market_segment` (OEM/OES/AM), `main_defect`.
+- **Ishikawa con incidencias**: `incidence_count` por causa (editable aun con la causa decidida), participación por categoría, orden por incidencias e historial automático (en cuántos 8D apareció la causa y en cuántos fue raíz); sugerencias del catálogo ordenadas también por historial.
+- **Registro de contención (D3)**: inicio, fin, lotes (revisadas/rechazadas/disposición), totales y resultado con justificación. D3 exige inicio, lotes y fin con resultado.
+- **Correo**: bandeja `email_outbox` (envío tras el commit, estado y error, reintento), destinatarios por evento y planta. Iniciar la contención → aviso a logística «detener material para re-inspección» con la alerta vigente en PDF; emitir la alerta → equipo del 8D y lista de difusión con el PDF. Transporte SMTP o archivo .eml (por defecto sin SMTP_HOST).
+- **Tablero visual** (KPIs, dona de estados, 8D por cliente, abiertos vs cerrados 6 meses, recientes con fecha límite, mis tareas) y **Concentrado** con hitos D3 24 h · D4 48 h · D5–D7 7 días · D8 14 días desde el reporte, filtros y Excel.
+- Migración `0010_internal_containment_email.sql`. `pytest`: **66 pasadas**; E2E **2/2**.
+- Datos de demostración: se eliminó de la base local el 8D importado del cliente (caso, lecciones, archivos, planta y usuarios; dos usuarios referenciados por la bitácora quedaron anonimizados e inactivos). Nuevo caso demo cerrado `case_closed_ford` en `app.demo_data` (externo, Ford, hitos en plazo); los clientes demo son armadoras.
+- Pendiente: **envío real de correo** — requiere credenciales SMTP (ver SECURITY.md); hoy los correos se generan como .eml en `storage/outbox`.

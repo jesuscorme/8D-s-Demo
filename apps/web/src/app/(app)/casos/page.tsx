@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorText, useApi } from "@/lib/api";
-import { CASE_STATUS, SEVERITY, SOURCE, fmtDate } from "@/lib/labels";
+import { CASE_STATUS, CASE_TYPE, OEM_CUSTOMERS, SEGMENTS, SEVERITY, SOURCE, SOURCES_BY_TYPE, fmtDate } from "@/lib/labels";
 import type { Case, CaseSummary, Plant } from "@/lib/types";
 import { Badge, CaseStatus, Empty, ErrorBox, Field, Loading, Modal, Severity } from "@/components/ui";
 import { useCan } from "@/components/Shell";
@@ -12,7 +12,8 @@ import { useCan } from "@/components/Shell";
 function NewCase({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const plants = useApi<Plant[]>("/plants");
-  const [form, setForm] = useState({ plant_id: "", title: "", severity: "medium", source_type: "", part_number: "", customer_name: "", process_name: "" });
+  const [form, setForm] = useState({ plant_id: "", title: "", case_type: "", severity: "medium", source_type: "", part_number: "",
+    customer_name: "", process_name: "", market_segment: "", main_defect: "", report_date: new Date().toISOString().slice(0, 10) });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -38,6 +39,15 @@ function NewCase({ onClose }: { onClose: () => void }) {
       <form className="stack" onSubmit={submit}>
         <ErrorBox error={error ?? plants.error} />
         <Field label="Título del problema" required><input value={form.title} onChange={set("title")} maxLength={200} required autoFocus /></Field>
+        <div className="row" role="radiogroup" aria-label="Tipo de 8D">
+          {(["external", "internal"] as const).map((t) => (
+            <button type="button" key={t} role="radio" aria-checked={form.case_type === t}
+              className={`btn ${form.case_type === t ? "primary" : ""}`} style={{ flex: 1, justifyContent: "center", flexDirection: "column", gap: 2 }}
+              onClick={() => setForm({ ...form, case_type: t, source_type: t === "external" ? "customer_complaint" : "internal" })}>
+              <span>{t === "external" ? "8D externo" : "8D interno"}</span>
+              <span className="small" style={{ fontWeight: 400, opacity: 0.85 }}>{t === "external" ? "Reclamación del cliente" : "Detectado en planta, proveedor o auditoría"}</span>
+            </button>))}
+        </div>
         <div className="grid g2">
           <Field label="Planta" required>
             <select value={form.plant_id} onChange={set("plant_id")} required>
@@ -46,15 +56,22 @@ function NewCase({ onClose }: { onClose: () => void }) {
           </Field>
           <Field label="Severidad"><select value={form.severity} onChange={set("severity")}>
             {Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          <Field label="Origen"><select value={form.source_type} onChange={set("source_type")}>
-            <option value="">Seleccionar…</option>{Object.entries(SOURCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+          <Field label="Origen"><select value={form.source_type} onChange={set("source_type")} disabled={!form.case_type}>
+            <option value="">Seleccionar…</option>{(SOURCES_BY_TYPE[form.case_type] ?? []).map((k) => <option key={k} value={k}>{SOURCE[k]}</option>)}</select></Field>
+          <Field label="Fecha de reporte" required><input type="date" value={form.report_date} onChange={set("report_date")} max={new Date().toISOString().slice(0, 10)} required /></Field>
           <Field label="Número de parte"><input value={form.part_number} onChange={set("part_number")} maxLength={100} /></Field>
-          <Field label="Cliente"><input value={form.customer_name} onChange={set("customer_name")} maxLength={200} /></Field>
+          <Field label={form.case_type === "external" ? "Cliente" : "Cliente (opcional)"} required={form.case_type === "external"}>
+            <input value={form.customer_name} onChange={set("customer_name")} maxLength={200} required={form.case_type === "external"}
+              list="oem-customers" placeholder="p. ej. Ford, GM, Toyota" />
+            <datalist id="oem-customers">{OEM_CUSTOMERS.map((c) => <option key={c} value={c} />)}</datalist></Field>
           <Field label="Proceso"><input value={form.process_name} onChange={set("process_name")} maxLength={200} placeholder="p. ej. Inyección, Maquinado" /></Field>
+          <Field label="Defecto principal"><input value={form.main_defect} onChange={set("main_defect")} maxLength={200} placeholder="p. ej. Rebaba, Fuga, Faltante" /></Field>
+          <Field label="Mercado"><select value={form.market_segment} onChange={set("market_segment")}>
+            <option value="">—</option>{SEGMENTS.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
         </div>
         <p className="small muted">Se asigna un folio automático. Te registras como responsable y líder; puedes cambiarlo en D1.</p>
         <div className="row"><button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button className="btn primary right" disabled={busy || !form.plant_id}>{busy ? "Creando…" : "Crear caso"}</button></div>
+          <button className="btn primary right" disabled={busy || !form.plant_id || !form.case_type} title={form.case_type ? "" : "Elige si el 8D es externo o interno"}>{busy ? "Creando…" : "Crear caso"}</button></div>
       </form>
     </Modal>
   );
@@ -67,9 +84,10 @@ function CasesPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
+  const [caseType, setCaseType] = useState("");
   const [mine, setMine] = useState(params.get("mine") === "1");
   const [creating, setCreating] = useState(params.get("nuevo") === "1");
-  const qs = new URLSearchParams({ ...(query && { q: query }), ...(status && { status }), ...(severity && { severity }), ...(mine && { mine: "true" }) });
+  const qs = new URLSearchParams({ ...(query && { q: query }), ...(status && { status }), ...(severity && { severity }), ...(caseType && { case_type: caseType }), ...(mine && { mine: "true" }) });
   const { data, error, loading, reload } = useApi<CaseSummary[]>(`/cases?${qs}`);
 
   useEffect(() => {
@@ -90,6 +108,8 @@ function CasesPage() {
             <option value="">Todos los estados</option>{Object.entries(CASE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
           <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ maxWidth: 170 }} aria-label="Severidad">
             <option value="">Toda severidad</option>{Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          <select value={caseType} onChange={(e) => setCaseType(e.target.value)} style={{ maxWidth: 160 }} aria-label="Tipo">
+            <option value="">Internos y externos</option>{Object.entries(CASE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
           <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} style={{ width: "auto" }} />Solo míos</label>
         </div>
         <ErrorBox error={error} onRetry={reload} />
@@ -97,10 +117,11 @@ function CasesPage() {
           <Empty title="Sin casos">{query || status || severity || mine ? "Ningún caso coincide con los filtros." : "Crea el primer caso 8D."}</Empty>
         ) : data && (
           <div className="table-wrap"><table>
-            <thead><tr><th>Folio</th><th>Título</th><th>Planta</th><th>Parte</th><th>Cliente</th><th>Severidad</th><th>Disciplina</th><th>Estado</th><th>Responsable</th><th>Actualizado</th></tr></thead>
+            <thead><tr><th>Folio</th><th>Tipo</th><th>Título</th><th>Planta</th><th>Parte</th><th>Cliente</th><th>Severidad</th><th>Disciplina</th><th>Estado</th><th>Responsable</th><th>Actualizado</th></tr></thead>
             <tbody>{data.map((c) => (
               <tr key={c.id}>
                 <td className="mono"><Link href={`/casos/${c.id}`}>{c.folio}</Link></td>
+                <td><Badge tone={c.case_type === "external" ? "red" : "blue"}>{CASE_TYPE[c.case_type]}</Badge></td>
                 <td>{c.title}{c.is_demo && <> <Badge tone="amber">Demo</Badge></>}</td>
                 <td>{c.plant_code}</td><td>{c.part_number ?? "—"}</td><td>{c.customer_name ?? "—"}</td>
                 <td><Severity value={c.severity} /></td>

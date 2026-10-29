@@ -37,9 +37,9 @@ CONTENT_FIELDS: dict[str, set[str]] = {
 
 # Campos del caso que quedan bloqueados cuando la disciplina dueña está enviada o aprobada.
 LOCKED_CASE_FIELDS: dict[str, set[str]] = {
-    "D0": {"title", "severity", "source_type"},
+    "D0": {"title", "severity", "source_type", "case_type", "report_date"},
     "D2": {"problem_description", "customer_name", "product_name", "part_number", "process_name",
-           "lot_number", "defect_date", "detected_quantity", "affected_quantity"},
+           "lot_number", "defect_date", "detected_quantity", "affected_quantity", "market_segment", "main_defect"},
 }
 LOCKING_STATUSES = {"pending_review", "approved"}
 ACTION_DONE = {"approved", "verified"}
@@ -61,6 +61,8 @@ class Snapshot:
     approved_criteria: int = 0
     system_updates: list[dict] = field(default_factory=list)  # status
     lessons: list[str] = field(default_factory=list)          # estados de lecciones con origen en el caso
+    containment_record: dict | None = None                    # inicio/fin/resultado de la contención (D3)
+    containment_lots: int = 0
 
 
 class RuleError(Exception):
@@ -112,12 +114,16 @@ def requirements(code: str, s: Snapshot) -> list[dict]:
             _req("when", "¿Cuándo? — momento de detección", _text(content.get("when"))),
             _req("how_detected", "¿Cómo se detectó?", _text(content.get("how_detected"))),
         ]
-        if c.get("source_type") == "customer_complaint":
-            reqs.append(_req("customer_name", "Cliente (reclamación de cliente)", _text(c.get("customer_name"))))
+        if c.get("case_type") == "external":
+            reqs.append(_req("customer_name", "Cliente (8D externo)", _text(c.get("customer_name"))))
         return reqs
     if code == "D3":
         active = [a for a in s.containment if a["status"] != "cancelled"]
+        record = s.containment_record or {}
         return [
+            _req("started", "Contención iniciada (aviso a logística con la alerta)", record.get("started_at")),
+            _req("lots", "Lotes revisados registrados", s.containment_lots > 0),
+            _req("ended", "Contención finalizada con resultado", record.get("ended_at") and record.get("result")),
             _req("has_actions", "Al menos una acción de contención", active),
             _req("all_verified", "Todas las acciones activas verificadas con evidencia",
                  active and all(a["status"] == "verified" and _text(a.get("evidence_notes")) for a in active)),
@@ -270,6 +276,32 @@ def case_status_after(s: Snapshot) -> str:
     if any(s.status.get(c, "not_started") != "not_started" for c in CODES):
         return "open"
     return "draft"
+
+
+# Hitos del concentrado de 8D: plazo en días naturales desde la fecha de reporte y la disciplina que lo cumple.
+MILESTONES: list[tuple[str, str, str, int]] = [
+    ("containment", "D3 · Contención (24 h)", "D3", 1),
+    ("root_cause", "D4 · Causa raíz (48 h)", "D4", 2),
+    ("actions", "D5–D7 · Acciones (7 días)", "D7", 7),
+    ("close", "D8 · Validación y cierre (14 días)", "D8", 14),
+]
+
+
+def milestone_status(report_date, approved_on, today, days: int) -> dict:
+    """on_time / late (cumplido tarde) / pending (en plazo) / overdue (vencido sin cumplir)."""
+    from datetime import timedelta
+    due = report_date + timedelta(days=days)
+    if approved_on:
+        status = "on_time" if approved_on <= due else "late"
+    else:
+        status = "overdue" if today > due else "pending"
+    return {"due": due, "done": approved_on, "status": status}
+
+
+def milestones(report_date, approved: dict, today) -> list[dict]:
+    """approved: código de disciplina → fecha de aprobación (date) o None."""
+    return [{"key": key, "label": label, **milestone_status(report_date, approved.get(code), today, days)}
+            for key, label, code, days in MILESTONES]
 
 
 def check_case_open(s: Snapshot) -> None:

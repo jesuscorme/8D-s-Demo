@@ -17,11 +17,12 @@ function AddCause({ caseId, categories, category, parent, onClose, onSaved }: {
   const [cat, setCat] = useState(category);
   const [text, setText] = useState("");
   const [ideaId, setIdeaId] = useState("");
+  const [incidences, setIncidences] = useState("");
   const [error, setError] = useState<string | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      onSaved(await api<Cause[]>(`/cases/${caseId}/causes`, { body: { category_id: parent?.category_id ?? cat, potential_cause: text || null, source_idea_id: ideaId || null, parent_cause_id: parent?.id ?? null } }));
+      onSaved(await api<Cause[]>(`/cases/${caseId}/causes`, { body: { category_id: parent?.category_id ?? cat, potential_cause: text || null, source_idea_id: ideaId || null, parent_cause_id: parent?.id ?? null, incidence_count: incidences === "" ? null : Number(incidences) } }));
       onClose();
     } catch (err) {
       setError(errorText(err));
@@ -39,6 +40,8 @@ function AddCause({ caseId, categories, category, parent, onClose, onSaved }: {
             {options.map((i) => <option key={i.id} value={i.id}>{i.title_es}</option>)}
           </select></Field>
         {!ideaId && <Field label="Causa potencial" required><input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} required /></Field>}
+        <Field label="Incidencias observadas" hint="Cuántas veces se observó (piezas, eventos, turnos). Ayuda a priorizar la investigación.">
+          <input type="number" min={0} value={incidences} onChange={(e) => setIncidences(e.target.value)} style={{ maxWidth: 200 }} /></Field>
         <ErrorBox error={error} />
         <div className="row"><button type="button" className="btn" onClick={onClose}>Cancelar</button><button className="btn primary right">Agregar</button></div>
       </form>
@@ -91,6 +94,7 @@ function CausePanel({ caseId, cause, editable, onClose, onSaved, onAddSub }: {
         <div className="row"><Badge>{cause.category_name}</Badge><Badge tone={TONE[cause.investigation_status]}>{CAUSE_STATUS[cause.investigation_status]}</Badge>
           <span className="small muted">Agregó {cause.added_by_name}{cause.source_idea_id && " · desde la biblioteca"}</span></div>
         {cause.procedure_finding && <div className="notice info"><b>{cause.procedure_finding.label}.</b> {cause.procedure_finding.hint}</div>}
+        <IncidenceEditor cause={cause} editable={canEditCause} onSaved={onSaved} />
         {canValidate && (
           <form className="stack card card-pad" onSubmit={submit}>
             <h3>Registrar validación</h3>
@@ -175,22 +179,30 @@ export function IshikawaPanel({ c, editable, onChanged }: { c: Case; editable: b
   if (categories.loading && !categories.data) return <Loading rows={4} />;
   const cats = categories.data ?? [];
   const byCat = (id: string) => causes.data?.filter((x) => x.category_id === id) ?? [];
+  const incidencesOf = (id: string) => byCat(id).reduce((sum, x) => sum + (x.incidence_count ?? 0), 0);
+  const totalIncidences = (causes.data ?? []).reduce((sum, x) => sum + (x.incidence_count ?? 0), 0);
   // Orden en árbol: cada causa seguida de sus subcausas (sangría por nivel).
   const tree = (id: string) => {
     const list = byCat(id);
     const out: { cause: Cause; depth: number }[] = [];
     const walk = (parent: string | null, depth: number) => list.filter((x) => (x.parent_cause_id ?? null) === parent)
+      .sort((a, b) => (b.incidence_count ?? -1) - (a.incidence_count ?? -1))
       .forEach((x) => { out.push({ cause: x, depth }); walk(x.id, depth + 1); });
     walk(null, 0);
     return out;
   };
   const bone = (cat: Category, row: number, col: number) => (
     <div key={cat.id} className="bone" style={{ gridRow: row, gridColumn: col }}>
-      <h3>{cat.name_es}<span className="n">{byCat(cat.id).length}</span></h3>
+      <h3>{cat.name_es}<span className="n">{byCat(cat.id).length} causa(s){incidencesOf(cat.id) > 0 && ` · ${incidencesOf(cat.id)} inc.`}</span></h3>
+      {totalIncidences > 0 && <div title="Participación en las incidencias observadas" style={{ height: 6, background: "var(--line-2)", borderRadius: 3 }}>
+        <div style={{ width: `${(100 * incidencesOf(cat.id)) / totalIncidences}%`, height: 6, background: "#2a78d6", borderRadius: 3 }} /></div>}
       {tree(cat.id).map(({ cause: x, depth }) => (
         <button key={x.id} className={`chip ${selected?.id === x.id ? "sel" : ""}`} onClick={() => setSelected(x)} title={CAUSE_STATUS[x.investigation_status]}
           style={depth ? { marginLeft: depth * 14, width: `calc(100% - ${depth * 14}px)` } : undefined}>
-          <span className={`st ${x.investigation_status}`} />{depth > 0 && <span className="muted">↳</span>}{x.potential_cause}
+          <span className={`st ${x.investigation_status}`} />{depth > 0 && <span className="muted">↳</span>}
+          <span style={{ flex: 1 }}>{x.potential_cause}</span>
+          {x.incidence_count != null && <span className="badge blue" title="Incidencias observadas">×{x.incidence_count}</span>}
+          {x.history_cases > 0 && <span className="badge amber" title={`En ${x.history_cases} 8D anteriores; causa raíz en ${x.history_root_cases}`}>↺{x.history_cases}</span>}
         </button>))}
       {canEdit && <button className="btn sm ghost" style={{ alignSelf: "flex-start" }} onClick={() => setAdding(cat.id)}>+ Agregar</button>}
     </div>
@@ -218,7 +230,7 @@ export function IshikawaPanel({ c, editable, onChanged }: { c: Case; editable: b
           {!suggestions.data?.length ? <Empty title="Sin sugerencias">Describe proceso y defecto (D2) para recibir sugerencias, o agrega causas manualmente.</Empty> : (
             <div className="table-wrap"><table><tbody>{suggestions.data.map((s) => (
               <tr key={s.id}>
-                <td><b>{s.title_es}</b><div className="small muted">{s.reasons?.join(" · ")}</div></td>
+                <td><b>{s.title_es}</b><div className="small muted">{s.reasons?.join(" · ")}{s.history_cases ? ` · en ${s.history_cases} 8D, causa raíz en ${s.history_root_cases}` : ""}</div></td>
                 <td><Badge>{cats.find((k) => k.id === s.category_id)?.name_es}</Badge></td>
                 <td style={{ width: 160 }}><button className="btn sm" onClick={() => addIdea(s)}>Agregar al Ishikawa</button></td>
               </tr>))}</tbody></table></div>
@@ -230,10 +242,12 @@ export function IshikawaPanel({ c, editable, onChanged }: { c: Case; editable: b
         <div className="card-head"><h2>Matriz de validación de causas</h2></div>
         {!causes.data?.length ? <Empty title="Sin causas potenciales">Agrega causas en el diagrama.</Empty> : (
           <div className="table-wrap"><table>
-            <thead><tr><th>Categoría</th><th>Causa potencial</th><th>¿Documentado?</th><th>¿Se siguió?</th><th>Método</th><th>Evidencia</th><th>Justificación</th><th>Responsable</th><th>Fecha</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Categoría</th><th>Causa potencial</th><th>Incidencias</th><th>Historial</th><th>¿Documentado?</th><th>¿Se siguió?</th><th>Método</th><th>Evidencia</th><th>Justificación</th><th>Responsable</th><th>Fecha</th><th>Estado</th></tr></thead>
             <tbody>{causes.data.map((x) => (
               <tr key={x.id} className={`click ${selected?.id === x.id ? "selected" : ""}`} onClick={() => setSelected(x)}>
                 <td className="small">{x.category_name}</td><td><b>{x.potential_cause}</b></td>
+                <td>{x.incidence_count ?? "—"}{x.incidence_count != null && totalIncidences > 0 && <div className="small muted">{Math.round((100 * x.incidence_count) / totalIncidences)} %</div>}</td>
+                <td className="small">{x.history_cases ? `${x.history_cases} 8D · raíz en ${x.history_root_cases}` : "—"}</td>
                 <td>{x.documented_answer ? ANSWER[x.documented_answer] : "—"}</td>
                 <td>{x.followed_process_answer ? ANSWER[x.followed_process_answer] : "—"}</td>
                 <td className="small">{x.verification_method ?? "—"}</td>
@@ -251,6 +265,27 @@ export function IshikawaPanel({ c, editable, onChanged }: { c: Case; editable: b
       {subOf && <AddCause caseId={c.id} categories={cats} category={subOf.category_id} parent={subOf} onClose={() => setSubOf(null)} onSaved={saved} />}
       {selected && <CausePanel key={selected.id} caseId={c.id} cause={selected} editable={editable} onClose={() => setSelected(null)} onSaved={saved}
         onAddSub={() => { setSubOf(selected); setSelected(null); }} />}
+    </div>
+  );
+}
+
+function IncidenceEditor({ cause, editable, onSaved }: { cause: Cause; editable: boolean; onSaved: (c: Cause[]) => void }) {
+  const [value, setValue] = useState(cause.incidence_count?.toString() ?? "");
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    try {
+      onSaved(await api<Cause[]>(`/causes/${cause.id}`, { method: "PATCH", body: { incidence_count: value === "" ? null : Number(value) } }));
+      setError(null);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  return (
+    <div className="row" style={{ alignItems: "flex-end" }}>
+      <Field label="Incidencias observadas"><input type="number" min={0} value={value} disabled={!editable} onChange={(e) => setValue(e.target.value)} style={{ width: 160 }} /></Field>
+      {editable && <button className="btn sm" disabled={value === (cause.incidence_count?.toString() ?? "")} onClick={save}>Guardar</button>}
+      <span className="small muted">Historial: {cause.history_cases ? `aparece en ${cause.history_cases} 8D anteriores, causa raíz en ${cause.history_root_cases}` : "sin antecedentes en otros 8D"}</span>
+      <ErrorBox error={error} />
     </div>
   );
 }

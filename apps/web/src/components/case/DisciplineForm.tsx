@@ -87,7 +87,7 @@ export function DisciplineForm({ c, code, fields, editable, onSaved }: {
                 {Object.entries(f.options ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>)
               : <input type={f.kind ?? "text"} min={f.kind === "number" ? 0 : undefined} value={values[f.key]} onChange={(e) => set(e.target.value)} disabled={disabled}
-                  max={f.key === "defect_date" ? new Date().toISOString().slice(0, 10) : undefined} />;
+                  max={f.key === "defect_date" || f.key === "report_date" ? new Date().toISOString().slice(0, 10) : undefined} />;
           return <div key={f.key} style={f.wide || f.kind === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
             <Field label={f.label} required={f.required} hint={f.hint}>{input}</Field></div>;
         })}

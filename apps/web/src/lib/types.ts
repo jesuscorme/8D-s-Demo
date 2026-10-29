@@ -43,6 +43,8 @@ export type CaseSummary = {
   plant_code: string;
   owner_name: string | null;
   current_discipline: string | null;
+  case_type: "internal" | "external";
+  report_date: string;
 };
 
 export type Case = {
@@ -70,6 +72,10 @@ export type Case = {
   cancel_reason: string | null;
   target_close_date: string | null;
   closed_at: string | null;
+  case_type: "internal" | "external";
+  market_segment: string | null;
+  main_defect: string | null;
+  report_date: string;
   is_demo: boolean;
   version: number;
   created_at: string;
@@ -172,6 +178,8 @@ export type Idea = {
   is_base: boolean;
   score?: number;
   reasons?: string[];
+  history_cases?: number;
+  history_root_cases?: number;
 };
 
 export type Cause = {
@@ -182,6 +190,9 @@ export type Cause = {
   potential_cause: string;
   parent_cause_id: string | null;
   notes: string | null;
+  incidence_count: number | null;
+  history_cases: number;
+  history_root_cases: number;
   investigation_status: string;
   source_idea_id: string | null;
   added_by_name: string;
@@ -367,3 +378,28 @@ export type Lesson = LessonSummary & {
 };
 
 export type IssuedDocument = { id: string; revision: number; sha256_hex: string; file_name: string; document_type: string; status: string };
+
+export type ContainmentLot = {
+  id: string; lot_number: string; location: string | null; quantity_inspected: number; quantity_rejected: number;
+  disposition: string | null; notes: string | null; created_by_name: string; created_at: string;
+};
+export type EmailRow = {
+  id: string; event: string; to_addresses: string[]; subject: string; status: "queued" | "sent" | "failed";
+  last_error: string | null; transport: string | null; created_at: string; sent_at: string | null;
+  attachments?: { file_name: string }[]; case_folio?: string | null; attempts?: number;
+};
+export type ContainmentRecord = {
+  record: { started_at: string; started_by_name: string; ended_at: string | null; ended_by_name: string | null;
+    result: "effective" | "not_effective" | null; result_notes: string | null } | null;
+  lots: ContainmentLot[];
+  emails: EmailRow[];
+  totals: { lots: number; inspected: number; rejected: number; ok: number };
+};
+export type Milestone = { key: string; label: string; due: string; done: string | null; status: "on_time" | "late" | "pending" | "overdue" };
+export type RegisterRow = {
+  id: string; folio: string; month: string; report_date: string; case_type: "internal" | "external"; customer_name: string | null;
+  title: string; market_segment: string | null; main_defect: string | null; part_number: string | null;
+  detected_quantity: number | null; root_cause: string | null; closed_on: string | null; leader: string | null;
+  status: string; status_label: string; milestones: Milestone[]; days_open: number; overdue: boolean; plant_code: string;
+  is_demo: boolean; current_discipline: string | null;
+};

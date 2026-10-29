@@ -45,8 +45,12 @@ def db_url(tmp_path_factory):
     assert out.returncode == 0, out.stdout[-800:] + out.stderr[-800:]
     url = f"{base}/{name}"
     os.environ["STORAGE_DIR"] = str(tmp_path_factory.mktemp("storage"))
+    os.environ["EMAIL_TRANSPORT"] = "file"  # las pruebas nunca envían correos reales
     with psycopg.connect(url, row_factory=dict_row) as conn:
-        ensure_organization(conn, "TEST", "Org Prueba", [("P1", "Planta 1"), ("P2", "Planta 2")], DEMO_USERS, PASSWORD)
+        org = ensure_organization(conn, "TEST", "Org Prueba", [("P1", "Planta 1"), ("P2", "Planta 2")], DEMO_USERS, PASSWORD)
+        for event, email in (("containment_started", "logistica@t.local"), ("alert_issued", "difusion@t.local")):
+            conn.execute("""insert into notification_recipients (organization_id, event, email) values (%s, %s, %s)
+                            on conflict do nothing""", (org["organization_id"], event, email))
         ensure_organization(conn, "OTRA", "Otra Org", [("X1", "Planta X")], [("otra@x.local", "Ajena", ["admin"])],
                             PASSWORD)
     yield url

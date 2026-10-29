@@ -214,7 +214,12 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f9; color:
 .modal-back { position: fixed; inset: 0; background: rgba(11, 31, 58, .35); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal { width: 100%; max-width: 640px; max-height: 92vh; overflow: auto; }
 
+.dash3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); }
+.dash2 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+
 @media (max-width: 1100px) {
+  .dash3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .dash2 { grid-template-columns: 1fr; }
   .flow { grid-template-columns: 1fr; }
   .fish { grid-template-columns: 1fr 1fr; grid-template-rows: none; gap: 10px; }
   .spine { display: none; }
@@ -229,7 +234,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f9; color:
   .sidebar-foot { display: none; }
   .content { padding: 16px; }
   .topbar { padding: 0 16px; }
-  .g2, .g3, .g4 { grid-template-columns: 1fr; }
+  .g2, .g3, .g4, .dash3 { grid-template-columns: 1fr; }
   .fish { grid-template-columns: 1fr; }
   .login-wrap { grid-template-columns: 1fr; }
   .login-side { display: none; }

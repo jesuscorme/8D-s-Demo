@@ -6,6 +6,7 @@ import { fmtDate } from "@/lib/labels";
 import type { Plant } from "@/lib/types";
 import { Badge, ErrorBox, Field, Loading, Modal, NotAvailable } from "@/components/ui";
 import { useCan, useMe } from "@/components/Shell";
+import { NotificationsAdmin } from "@/components/NotificationsAdmin";
 
 type AdminUser = { id: string; email: string; display_name: string; is_active: boolean; created_at: string; roles: string[]; plant_ids: string[] };
 const ROLES: Record<string, string> = { admin: "Administrador", quality_manager: "Gerente de calidad", engineer: "Ingeniero de calidad", viewer: "Consulta" };
@@ -189,6 +190,7 @@ export default function AdminPage() {
             <tbody>{plants.data?.map((p) => <tr key={p.id}><td className="mono">{p.code}</td><td>{p.name}</td></tr>)}</tbody>
           </table></div>
         </div>
+        <NotificationsAdmin plants={plants.data ?? []} />
         <Logo />
       </div>
       {modal === "user" && <UserForm plants={plants.data ?? []} onClose={() => setModal(null)} onSaved={users.reload} />}

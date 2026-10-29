@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, errorText } from "@/lib/api";
-import { DISCIPLINE_STATUS, SEVERITY, SOURCE, fmtDate } from "@/lib/labels";
+import { CASE_TYPE, DISCIPLINE_STATUS, SEVERITY, SOURCE, fmtDate } from "@/lib/labels";
 import type { Case, Discipline } from "@/lib/types";
 import { Badge, ErrorBox, Field, Modal } from "@/components/ui";
 import { useCan } from "@/components/Shell";
@@ -11,11 +11,14 @@ import { TeamEditor } from "./TeamEditor";
 import { CaseAlerts, ContainmentPanel } from "./Containment";
 import { IshikawaPanel } from "./Ishikawa";
 import { ActionsPanel, CaseLessonsPanel, EffectivenessPanel, SystemUpdatesPanel } from "./Actions";
+import { ContainmentRecordPanel } from "./ContainmentRecord";
 
 const FIELDS: Record<string, FieldSpec[]> = {
   D0: [
     { key: "title", label: "Título del caso", target: "case", required: true, wide: true },
+    { key: "case_type", label: "Tipo de 8D", target: "case", kind: "select", options: CASE_TYPE, required: true },
     { key: "source_type", label: "Origen", target: "case", kind: "select", options: SOURCE, required: true },
+    { key: "report_date", label: "Fecha de reporte", target: "case", kind: "date", required: true, hint: "Inicio de los plazos del concentrado (24 h, 48 h, 7 y 14 días)." },
     { key: "severity", label: "Severidad", target: "case", kind: "select", options: SEVERITY, required: true },
     { key: "target_close_date", label: "Fecha objetivo de cierre", target: "case", kind: "date", hint: "Se usa para el indicador de casos vencidos." },
     { key: "emergency_response", label: "Acciones de respuesta de emergencia (ERA)", target: "content", kind: "textarea", required: true,
@@ -26,7 +29,9 @@ const FIELDS: Record<string, FieldSpec[]> = {
     { key: "problem_description", label: "Descripción del problema", target: "case", kind: "textarea", required: true, hint: "Mínimo 20 caracteres; hechos, no causas." },
     { key: "part_number", label: "Número de parte", target: "case", required: true },
     { key: "product_name", label: "Producto", target: "case" },
-    { key: "customer_name", label: "Cliente", target: "case", hint: "Obligatorio si el origen es reclamación de cliente." },
+    { key: "customer_name", label: "Cliente", target: "case", hint: "Obligatorio en 8D externos." },
+    { key: "market_segment", label: "Mercado (OEM | OES | AM)", target: "case", kind: "select", options: { OEM: "OEM", OES: "OES", AM: "AM" } },
+    { key: "main_defect", label: "Defecto principal", target: "case" },
     { key: "process_name", label: "Proceso", target: "case" },
     { key: "lot_number", label: "Lote", target: "case" },
     { key: "defect_date", label: "Fecha de detección", target: "case", kind: "date", required: true },
@@ -210,7 +215,11 @@ export function WorkflowTab({ c, setCase, reload }: { c: Case; setCase: (c: Case
 
         {d.code === "D1" && <div className="card card-pad"><TeamEditor c={c} editable={editable} onSaved={setCase} /></div>}
         {FIELDS[d.code] && <div className="card card-pad"><DisciplineForm c={c} code={d.code} fields={FIELDS[d.code]} editable={editable} onSaved={setCase} /></div>}
-        {d.code === "D3" && <><ContainmentPanel caseId={c.id} editable={editable} onChanged={reload} /><CaseAlerts caseId={c.id} open={open} /></>}
+        {d.code === "D3" && <>
+          <ContainmentPanel caseId={c.id} editable={editable} onChanged={reload} />
+          <CaseAlerts caseId={c.id} open={open} />
+          <ContainmentRecordPanel c={c} editable={unlocked} onChanged={reload} />
+        </>}
         {d.code === "D4" && <><FiveWhys c={c} editable={editable} onSaved={setCase} /><IshikawaPanel c={c} editable={editable} onChanged={reload} /></>}
         {d.code === "D5" && <ActionsPanel c={c} types={["corrective"]} canDefine={unlocked} canExecute={false} title="Acciones correctivas permanentes" onChanged={reload} />}
         {d.code === "D6" && <>

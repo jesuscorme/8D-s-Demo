@@ -62,6 +62,9 @@ def through_d4(a, plant, users) -> tuple[str, dict]:
     photo = ok(ing.post(f"/cases/{cid}/attachments", data={"purpose": "photo"}, files={"file": ("nok.png", png(), "image/png")}), 201)
     ok(ing.put(f"/alerts/{alert['id']}/photos", json={"photos": [{"attachment_id": photo["id"], "kind": "nok"}]}))
     ok(mgr.post(f"/alerts/{alert['id']}/issue"))
+    ok(ing.post(f"/cases/{cid}/containment-record/start", json={}))
+    ok(ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-0915", "quantity_inspected": 1200, "quantity_rejected": 41}), 201)
+    ok(ing.post(f"/cases/{cid}/containment-record/end", json={"result": "effective", "result_notes": "Lotes segregados y revisados"}))
     approve(a, cid, "D3")
     cats = {c["code"]: c["id"] for c in ok(ing.get("/ishikawa/categories"))}
     causes = ok(ing.post(f"/cases/{cid}/causes", json={"category_id": cats["MACHINE"], "potential_cause": "Desgaste de herramienta"}), 201)

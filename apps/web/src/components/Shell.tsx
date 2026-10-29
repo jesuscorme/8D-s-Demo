@@ -22,6 +22,7 @@ export function useCan(permission: string): boolean {
 const NAV: { href: string; label: string; icon: string; soon?: boolean; perm?: string }[] = [
   { href: "/", label: "Inicio", icon: "⌂" },
   { href: "/casos", label: "Casos 8D", icon: "▤" },
+  { href: "/concentrado", label: "Concentrado", icon: "☰" },
   { href: "/alertas", label: "Alertas", icon: "⚠" },
   { href: "/catalogo", label: "Catálogo de causas", icon: "⌗" },
   { href: "/lecciones", label: "Lecciones aprendidas", icon: "✎" },

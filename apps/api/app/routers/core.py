@@ -77,7 +77,65 @@ def dashboard(p: Principal = Depends(require("case.read")), conn: psycopg.Connec
         order by 7 nulls last limit 12""", args).fetchall()
     return {"by_status": {r["status"]: r["n"] for r in by_status}, "overdue_containment": overdue,
             "pending_review": pending_review, "issued_alerts": alerts, "my_cases": mine,
-            "attention": attention, "attention_items": attention_items}
+            "attention": attention, "attention_items": attention_items, **_visual(conn, p, args, plant_filter)}
+
+
+def _visual(conn, p: Principal, args: dict, plant_filter: str) -> dict:
+    """Datos del tablero visual: totales, estados, clientes, tendencia, recientes y tareas."""
+    from datetime import date
+    from app.routers.reports import RegisterFilters, register_rows
+    rows = [r for r in register_rows(conn, p, RegisterFilters()) if r["status"] != "cancelled"]
+    groups = {"in_process": ("En proceso", {"draft", "open", "in_progress"}), "review": ("En revisión", {"pending_review"}),
+              "closed": ("Cerrado", {"closed", "approved"})}
+    status = [{"key": k, "label": label, "n": sum(1 for r in rows if r["status"] in codes)} for k, (label, codes) in groups.items()]
+    customers: dict[str, int] = {}
+    for r in rows:
+        name = (r["customer_name"] or "").strip() if r["case_type"] == "external" else "Internos (planta)"
+        customers[name or "Sin cliente"] = customers.get(name or "Sin cliente", 0) + 1
+    ranked = sorted(customers.items(), key=lambda kv: (-kv[1], kv[0]))
+    by_customer = [{"label": k, "n": v} for k, v in ranked[:5]]
+    if len(ranked) > 5:
+        by_customer.append({"label": "Otros", "n": sum(v for _, v in ranked[5:])})
+    today = date.today()
+    months = []
+    for i in range(5, -1, -1):
+        y, m = today.year, today.month - i
+        while m <= 0:
+            y, m = y - 1, m + 12
+        key = f"{y:04d}-{m:02d}"
+        months.append({"month": key, "opened": sum(1 for r in rows if r["month"] == key),
+                       "closed": sum(1 for r in rows if r["closed_on"] and r["closed_on"].strftime("%Y-%m") == key)})
+    recent = [{"id": r["id"], "folio": r["folio"], "customer": r["customer_name"] if r["case_type"] == "external" else "Interno",
+               "title": r["title"], "status": r["status"], "status_label": r["status_label"], "overdue": r["overdue"],
+               "due": next((m["due"] for m in r["milestones"] if m["key"] == "close"), None), "is_demo": r["is_demo"]}
+              for r in rows[:6]]
+    tasks = conn.execute(f"""
+        select 'action' as kind, a.description as label, c.id as case_id, c.folio, a.due_date as due from corrective_actions a
+        join cases_8d c on c.id = a.case_id
+        where a.organization_id = %(org)s and a.responsible_user_id = %(me)s and a.status in ('open','in_progress'){plant_filter}
+        union all
+        select 'containment', a.description, c.id, c.folio, a.due_date from containment_actions a join cases_8d c on c.id = a.case_id
+        where a.organization_id = %(org)s and a.responsible_user_id = %(me)s and a.status not in ('verified','cancelled'){plant_filter}
+        order by 5 nulls last limit 8""", args).fetchall()
+    if p.can("discipline.approve"):
+        tasks += conn.execute(f"""
+            select 'review' as kind, 'Revisar ' || d.discipline_code as label, c.id as case_id, c.folio, null::date as due
+            from case_disciplines d join cases_8d c on c.id = d.case_id
+            where d.organization_id = %(org)s and d.status = 'pending_review'{plant_filter}
+            union all
+            select 'approve_action', 'Aprobar acción: ' || a.description, c.id, c.folio, a.due_date from corrective_actions a
+            join cases_8d c on c.id = a.case_id where a.organization_id = %(org)s and a.status = 'pending_approval'
+              and a.submitted_by <> %(me)s{plant_filter}
+            limit 8""", args).fetchall()
+    for t in tasks:
+        t["overdue"] = bool(t["due"] and t["due"] < today)
+    by_type = {"internal": sum(1 for r in rows if r["case_type"] == "internal"),
+               "external": sum(1 for r in rows if r["case_type"] == "external")}
+    return {"totals": {"total": len(rows), "in_process": sum(1 for r in rows if r["status"] not in ("closed", "approved")),
+                       "closed": sum(1 for r in rows if r["status"] in ("closed", "approved")),
+                       "overdue": sum(1 for r in rows if r["overdue"])},
+            "status_groups": status, "by_customer": by_customer, "trend": months, "by_type": by_type,
+            "recent": recent, "my_tasks": tasks[:10]}
 
 
 # ---- Administración -------------------------------------------------------------------------

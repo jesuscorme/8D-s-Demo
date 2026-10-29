@@ -39,3 +39,9 @@ PNG, JPEG o PDF de hasta 10 MB; el tipo se valida por contenido. Se guardan en a
 - **Administración**: usuarios, rol, plantas visibles (vacío = todas), restablecer contraseña, alta de plantas y logo de la organización (aparece en los PDF nuevos).
 - En D4, abre una causa y usa **+ Subcausa** para desglosarla; los **5 porqués** se registran en su propia tarjeta.
 - En la lección, la tarjeta **Antes y después** exige al menos una foto de cada lado (sube una nueva o elige una imagen del caso, con leyenda).
+
+## Contención, correos y concentrado
+- En **D3**, después de emitir la alerta, usa **Iniciar contención**: se avisa a logística por correo (detener material para re-inspección) con la alerta en PDF. Registra cada **lote revisado** y **finaliza** con el resultado.
+- Al **emitir la alerta** se envía al equipo del 8D y a la lista de difusión. Los destinatarios se configuran en **Administración › Notificaciones**, donde también hay un correo de prueba y la bandeja de salida.
+- En el **Ishikawa** captura las **incidencias** de cada causa; el sistema muestra además en cuántos 8D anteriores apareció.
+- **Concentrado**: todos los 8D con sus hitos (D3 24 h, D4 48 h, D5–D7 7 días, D8 14 días desde la fecha de reporte); se exporta a Excel.

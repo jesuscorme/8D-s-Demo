@@ -23,6 +23,11 @@ def actors(login):
     return {"ing": login("ing@t.local"), "mgr": login("gerente@t.local")}
 
 
+def approve_blocked(actors, case_id, code) -> bool:
+    res = actors["ing"].post(f"/cases/{case_id}/disciplines/{code}/submit")
+    return res.status_code == 409 and res.json()["code"] == "requirements_pending"
+
+
 def approve(actors, case_id, code):
     ok(actors["ing"].post(f"/cases/{case_id}/disciplines/{code}/submit"))
     return ok(actors["mgr"].post(f"/cases/{case_id}/disciplines/{code}/approve", json={"comment": "OK"}))
@@ -86,7 +91,11 @@ def test_full_d0_to_d4(actors, plant, users, sql):
     evidence = ok(ing.post(f"/cases/{cid}/attachments", data={"purpose": "evidence", "containment_id": aid},
                            files={"file": ("registro.pdf", b"%PDF-1.4 registro", "application/pdf")}), 201)
     assert evidence["containment_id"] == aid
-    assert flow(ok(ing.get(f"/cases/{cid}")), "D3")["blockers"] == ["Alerta de calidad emitida"]
+    d3 = flow(ok(ing.get(f"/cases/{cid}")), "D3")["blockers"]
+    assert "Alerta de calidad emitida" in d3 and "Contención iniciada (aviso a logística con la alerta)" in d3
+    # Iniciar la contención exige la alerta emitida (va adjunta al aviso a logística).
+    early = ing.post(f"/cases/{cid}/containment-record/start", json={})
+    assert early.status_code == 409 and early.json()["code"] == "alert_required"
 
     alert = ok(ing.post(f"/cases/{cid}/alerts", json={"failure_type": "external"}), 201)
     assert alert["folio"].startswith("QA-") and alert["affected_quantity"] == 1200
@@ -129,6 +138,34 @@ def test_full_d0_to_d4(actors, plant, users, sql):
     assert sorted(d["status"] for d in docs) == ["issued", "superseded"]
     assert len({d["sha256_hex"] for d in docs}) == 2
     assert ing.get(f"/documents/{rev1['revisions'][0]['document_id']}/content").status_code == 200
+    # Alerta emitida → correo al equipo y a la lista de difusión con el PDF (transporte «file» en pruebas).
+    from app import storage
+    issued_mails = sql("select * from email_outbox where case_id = %s and event = 'alert_issued' order by created_at", cid)
+    assert len(issued_mails) == 2 and all(m["status"] == "sent" for m in issued_mails)
+    assert "difusion@t.local" in issued_mails[0]["to_addresses"] and "ing@t.local" in issued_mails[0]["to_addresses"]
+    eml = (storage.root() / "outbox" / f"{issued_mails[-1]['id']}.eml").read_bytes()
+    assert b"application/pdf" in eml and b"QA-" in eml
+
+    # Registro de contención: inicio (aviso a logística con la alerta vigente), lotes y fin con resultado.
+    assert approve_blocked(actors, cid, "D3")
+    rec = ok(ing.post(f"/cases/{cid}/containment-record/start", json={}))
+    assert rec["record"]["started_at"] and rec["emails"][0]["event"] == "containment_started"
+    assert ing.post(f"/cases/{cid}/containment-record/start", json={}).json()["code"] == "already_started"
+    logistics = sql("select * from email_outbox where case_id = %s and event = 'containment_started'", cid)[0]
+    assert logistics["status"] == "sent" and "logistica@t.local" in logistics["to_addresses"]
+    assert "Detener material" in logistics["subject"] and logistics["attachments"][0]["file_name"].endswith("rev2.pdf")
+    assert ing.post(f"/cases/{cid}/containment-record/end", json={"result": "effective", "result_notes": "Todo bien"}).json()["code"] == "lots_required"
+    assert ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-1", "quantity_inspected": 5, "quantity_rejected": 9}).status_code == 422
+    ok(ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-1", "location": "Almacén PT", "quantity_inspected": 800,
+                                                       "quantity_rejected": 20, "disposition": "rework"}), 201)
+    rec = ok(ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-2", "quantity_inspected": 400,
+                                                             "quantity_rejected": 15, "disposition": "scrap"}), 201)
+    assert rec["totals"] == {"lots": 2, "inspected": 1200, "rejected": 35, "ok": 1165}
+    assert ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-2", "quantity_inspected": 1}).status_code == 409
+    rec = ok(ing.post(f"/cases/{cid}/containment-record/end", json={"result": "effective",
+                                                                   "result_notes": "Sin piezas NOK fuera de los lotes segregados"}))
+    assert rec["record"]["result"] == "effective" and rec["record"]["ended_at"]
+    assert ing.post(f"/cases/{cid}/containment-lots", json={"lot_number": "L-3", "quantity_inspected": 1}).json()["code"] == "already_ended"
     case = approve(actors, cid, "D3")
     assert ing.post(f"/cases/{cid}/containment", json={"description": "otra"}).json()["code"] == "discipline_locked"
 

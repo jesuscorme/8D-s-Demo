@@ -43,12 +43,15 @@ class CauseIn(BaseModel):
     source_idea_id: UUID | None = None
     parent_cause_id: UUID | None = None
     notes: str | None = Field(None, max_length=2000)
+    # Veces que se observó la causa en la investigación (piezas, eventos, turnos…).
+    incidence_count: int | None = Field(None, ge=0, le=1_000_000)
 
 
 class CausePatch(BaseModel):
     potential_cause: str | None = Field(None, min_length=1, max_length=500)
     category_id: UUID | None = None
     notes: str | None = Field(None, max_length=2000)
+    incidence_count: int | None = Field(None, ge=0, le=1_000_000)
 
 
 class ValidationIn(BaseModel):
@@ -132,7 +135,18 @@ def suggestions(case_id: UUID, p: Principal = Depends(require("case.read")),
         "select source_idea_id from ishikawa_causes where case_id = %s and source_idea_id is not null", (case_id,))}
     text = {"process": case["process_name"], "title": case["title"], "problem": case["problem_description"],
             "what": content.get("what"), "product": case["product_name"]}
-    return causes_rules.suggest(text, _ideas(conn, p), used)
+    history = {r["source_idea_id"]: r for r in conn.execute(
+        """select source_idea_id, count(distinct case_id)::int as cases,
+                  count(distinct case_id) filter (where investigation_status = 'root_cause')::int as root_cases
+           from ishikawa_causes where organization_id = %s and source_idea_id is not null group by source_idea_id""",
+        (p.organization_id,)).fetchall()}
+    result = causes_rules.suggest(text, _ideas(conn, p), used)
+    for idea in result:
+        h = history.get(idea["id"], {})
+        idea["history_cases"], idea["history_root_cases"] = h.get("cases", 0), h.get("root_cases", 0)
+    # A igual coincidencia, primero las que más veces fueron causa raíz en la organización.
+    result.sort(key=lambda x: (-x["score"], -x["history_root_cases"], -x["history_cases"], x["title_es"]))
+    return result
 
 
 def _causes(conn, case_id: UUID) -> list[dict]:
@@ -142,8 +156,17 @@ def _causes(conn, case_id: UUID) -> list[dict]:
                   (select count(*)::int from attachments f where f.cause_id = c.id) as attachment_count,
                   lv.documented_answer, lv.followed_process_answer, lv.verification_method, lv.evidence_summary,
                   lv.rationale, lv.validated_at, lv.due_date, lvu.display_name as validated_by_name,
-                  lr.display_name as responsible_name, lv.responsible_user_id
+                  lr.display_name as responsible_name, lv.responsible_user_id,
+                  coalesce(h.cases, 0) as history_cases, coalesce(h.root_cases, 0) as history_root_cases
            from ishikawa_causes c join ishikawa_categories k on k.id = c.category_id
+           left join lateral (
+               -- Historial: otros 8D de la organización con la misma causa (mismo texto o misma idea del catálogo).
+               select count(distinct o.case_id)::int as cases,
+                      count(distinct o.case_id) filter (where o.investigation_status = 'root_cause')::int as root_cases
+               from ishikawa_causes o
+               where o.organization_id = c.organization_id and o.case_id <> c.case_id
+                 and (lower(trim(o.potential_cause)) = lower(trim(c.potential_cause))
+                      or (c.source_idea_id is not null and o.source_idea_id = c.source_idea_id))) h on true
            join users u on u.id = c.added_by
            left join lateral (select * from cause_validations v where v.cause_id = c.id
                               order by v.validated_at desc, v.id limit 1) lv on true
@@ -194,10 +217,10 @@ def add_cause(case_id: UUID, body: CauseIn, p: Principal = Depends(require("caus
         raise ApiError(409, "duplicate", "Esa causa ya está en el Ishikawa de este caso.")
     row = conn.execute(
         """insert into ishikawa_causes (organization_id, case_id, category_id, parent_cause_id, source_idea_id,
-                                        potential_cause, notes, added_by) values (%s, %s, %s, %s, %s, %s, %s, %s)
-           returning id""",
+                                        potential_cause, notes, incidence_count, added_by)
+           values (%s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
         (p.organization_id, case_id, category, body.parent_cause_id, body.source_idea_id, text, body.notes,
-         p.user_id)).fetchone()
+         body.incidence_count, p.user_id)).fetchone()
     conn.execute("""update case_disciplines set status = 'in_progress', updated_at = now()
                     where case_id = %s and discipline_code = 'D4' and status = 'not_started'""", (case_id,))
     touch(conn, case_id)
@@ -212,9 +235,11 @@ def update_cause(cause_id: UUID, body: CausePatch, p: Principal = Depends(requir
                  conn: psycopg.Connection = Depends(get_conn)):
     cause, case = _load_cause(conn, p, cause_id)
     ensure_section_editable(conn, case, "D4", "La investigación de causas")
-    if cause["investigation_status"] in DECIDED:
+    changes = body.model_dump(exclude_unset=True)
+    # Las incidencias se pueden actualizar siempre; el texto y la categoría, solo antes de decidir.
+    if cause["investigation_status"] in DECIDED and set(changes) - {"incidence_count"}:
         raise ApiError(409, "cause_decided", "La causa ya tiene una decisión; registra una nueva validación para cambiarla.")
-    old, new = audit.diff(cause, body.model_dump(exclude_unset=True))
+    old, new = audit.diff(cause, changes)
     if new:
         conn.execute(f"update ishikawa_causes set {', '.join(f'{k} = %s' for k in new)}, updated_at = now() where id = %s",
                      [*new.values(), cause_id])

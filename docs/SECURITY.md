@@ -39,3 +39,8 @@ por el área legal del cliente. Hoy las aprobaciones son registros de auditoría
 - Archivo huérfano en `storage/` si la transacción falla después de guardarlo (no afecta integridad; limpieza pendiente).
 - Sin recuperación de contraseña por correo: el usuario la cambia (cierra sus otras sesiones) o el administrador la restablece (cierra todas).
 - El bloqueo de login es por correo; un atacante puede bloquear temporalmente una cuenta conocida (riesgo aceptado para el piloto).
+
+## Correo
+- Credenciales SMTP solo en `.env` (SMTP_USER/SMTP_PASSWORD; nunca en Git); conexión con STARTTLS (587) o SSL (465).
+- Cada correo queda en `email_outbox` con destinatarios, asunto, adjuntos, estado y error; los adjuntos se leen del almacenamiento privado al enviarse.
+- Las pruebas fuerzan `EMAIL_TRANSPORT=file`: nunca envían correos reales.

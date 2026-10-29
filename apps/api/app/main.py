@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app import errors
 from app.db import Database, database_url
-from app.routers import actions, alerts, auth_routes, cases_routes, containment, core, ishikawa, lessons, reports
+from app.routers import (actions, alerts, auth_routes, cases_routes, containment, core, ishikawa, lessons,
+                         notifications, reports)
 
 CLIENT_HEADER = "x-d8-client"
 
@@ -50,6 +51,7 @@ def create_app(url: str | None = None) -> FastAPI:
             conn.execute("select 1")
         return {"status": "ok"}
 
-    for module in (auth_routes, core, cases_routes, containment, alerts, ishikawa, actions, lessons, reports):
+    for module in (auth_routes, core, cases_routes, containment, alerts, ishikawa, actions, lessons, reports,
+                   notifications):
         app.include_router(module.router)
     return app

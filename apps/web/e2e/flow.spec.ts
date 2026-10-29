@@ -11,7 +11,8 @@ async function login(browser: Browser, email: string): Promise<Page> {
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', PASSWORD);
   await page.click('button:has-text("Entrar")');
-  await expect(page.getByRole("heading", { name: /^Hola/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Concentrado de 8D" })).toBeVisible();
   return page;
 }
 
@@ -23,6 +24,8 @@ test("ingeniería crea un caso, completa D0 y calidad lo aprueba", async ({ brow
   const ing = await login(browser, "ingenieria@demo.local");
   await ing.goto("/casos?nuevo=1");
   await ing.getByLabel("Título del problema").fill("E2E: rebaba en carcasa");
+  await expect(ing.getByRole("button", { name: "Crear caso" })).toBeDisabled();  // falta elegir interno/externo
+  await ing.getByRole("radio", { name: /8D interno/ }).click();
   await ing.getByLabel("Origen").selectOption("internal");
   await ing.click('button:has-text("Crear caso")');
   await expect(ing).toHaveURL(/\/casos\/[0-9a-f-]{36}$/);

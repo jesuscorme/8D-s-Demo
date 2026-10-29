@@ -54,12 +54,14 @@ export default function CasePage({ params }: { params: Promise<{ id: string }> }
       <div className="small muted" style={{ marginBottom: 6 }}><Link href="/casos">Casos 8D</Link> / {c.folio}</div>
       <div className="page-head">
         <div>
-          <div className="row"><span className="mono badge navy">{c.folio}</span><CaseStatus status={c.status} /><Severity value={c.severity} />
+          <div className="row"><span className="mono badge navy">{c.folio}</span>
+            <Badge tone={c.case_type === "external" ? "red" : "blue"}>8D {c.case_type === "external" ? "externo" : "interno"}</Badge>
+            <CaseStatus status={c.status} /><Severity value={c.severity} />
             {c.is_demo && <Badge tone="amber">Datos de demostración</Badge>}</div>
           <h1 style={{ marginTop: 8 }}>{c.title}</h1>
           <div className="sub">
             {c.plant_code} — {c.plant_name} · Responsable: {c.owner_name ?? "—"} · {c.source_type ? SOURCE[c.source_type] : "Origen sin definir"}
-            {c.part_number && ` · Parte ${c.part_number}`} · Abierto {fmtDate(c.created_at)} por {c.opened_by_name}
+            {c.part_number && ` · Parte ${c.part_number}`} · Reportado {fmtDate(c.report_date)} · Abierto por {c.opened_by_name}
           </div>
         </div>
         <div className="actions">

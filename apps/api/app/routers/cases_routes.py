@@ -35,18 +35,24 @@ class CaseFields(BaseModel):
     affected_quantity: int | None = Field(None, ge=0)
     owner_user_id: UUID | None = None
     target_close_date: date | None = None
+    case_type: Literal["internal", "external"] | None = None
+    market_segment: Literal["OEM", "OES", "AM"] | None = None
+    main_defect: str | None = Field(None, max_length=200)
+    report_date: date | None = None
 
-    @field_validator("defect_date")
+    @field_validator("defect_date", "report_date")
     @classmethod
     def not_future(cls, value: date | None):
         if value and value > date.today():
-            raise ValueError("La fecha de detección no puede ser futura.")
+            raise ValueError("La fecha no puede ser futura.")
         return value
 
 
 class CaseIn(CaseFields):
     plant_id: UUID
     title: str = Field(min_length=1, max_length=200)
+    # Interno (detectado en planta) o externo (reclamación de cliente). Sin indicar: se deduce del origen.
+    case_type: Literal["internal", "external"] | None = None
 
 
 class CasePatch(CaseFields):
@@ -113,7 +119,7 @@ def _detail(conn: psycopg.Connection, p: Principal, case_id: UUID) -> dict:
 
 @router.get("/cases")
 def list_cases(q: str | None = Query(None, max_length=100), status: str | None = None, severity: str | None = None,
-               plant_id: UUID | None = None, mine: bool = False,
+               plant_id: UUID | None = None, mine: bool = False, case_type: Literal["internal", "external"] | None = None,
                p: Principal = Depends(require("case.read")), conn: psycopg.Connection = Depends(get_conn)):
     where = ["c.organization_id = %(org)s"]
     args: dict = {"org": p.organization_id}
@@ -130,6 +136,9 @@ def list_cases(q: str | None = Query(None, max_length=100), status: str | None =
     if severity:
         where.append("c.severity = %(severity)s")
         args["severity"] = severity
+    if case_type:
+        where.append("c.case_type = %(case_type)s")
+        args["case_type"] = case_type
     if plant_id:
         where.append("c.plant_id = %(plant)s")
         args["plant"] = plant_id
@@ -138,7 +147,7 @@ def list_cases(q: str | None = Query(None, max_length=100), status: str | None =
         args["me"] = p.user_id
     return conn.execute(
         f"""select c.id, c.folio, c.title, c.status, c.severity, c.part_number, c.customer_name, c.defect_date,
-                   c.is_demo, c.updated_at, pl.code as plant_code, u.display_name as owner_name,
+                   c.is_demo, c.updated_at, c.case_type, c.report_date, pl.code as plant_code, u.display_name as owner_name,
                    (select min(d.discipline_code) from case_disciplines d
                      where d.case_id = c.id and d.status <> 'approved') as current_discipline
             from cases_8d c join plants pl on pl.id = c.plant_id left join users u on u.id = c.owner_user_id
@@ -157,6 +166,7 @@ def create_case(body: CaseIn, p: Principal = Depends(require("case.create")),
     number = _next_number(conn, p.organization_id, f"case:{plant['id']}")
     folio = f"8D-{plant['code']}-{date.today().year}-{number:04d}"
     fields = body.model_dump(exclude={"plant_id", "owner_user_id"}, exclude_none=True)
+    fields["case_type"] = body.case_type or ("external" if body.source_type == "customer_complaint" else "internal")
     columns = ["organization_id", "plant_id", "case_number", "folio", "opened_by", "owner_user_id", *fields]
     values = [p.organization_id, plant["id"], number, folio, p.user_id, owner, *fields.values()]
     case = conn.execute(
@@ -184,8 +194,9 @@ def update_case(case_id: UUID, body: CasePatch, p: Principal = Depends(require("
     snap = snapshot(conn, case)
     rule(workflow.check_case_open, snap)
     changes = body.model_dump(exclude_unset=True, exclude={"version"})
-    if "title" in changes and changes["title"] is None:
-        raise invalid("El título es obligatorio.")
+    for required in ("title", "case_type", "report_date"):
+        if required in changes and changes[required] is None:
+            raise invalid("El título, el tipo (interno/externo) y la fecha de reporte son obligatorios.")
     if case["version"] != body.version:
         raise ApiError(409, "stale", "Otra persona modificó el caso. Recarga para ver los cambios.")
     old, new = audit.diff(case, changes)

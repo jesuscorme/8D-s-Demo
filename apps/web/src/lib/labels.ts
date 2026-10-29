@@ -4,7 +4,7 @@ export const CASE_STATUS: Record<string, string> = {
 };
 export const SEVERITY: Record<string, string> = { low: "Baja", medium: "Media", high: "Alta", critical: "Crítica" };
 export const SOURCE: Record<string, string> = {
-  customer_complaint: "Reclamación de cliente", internal: "Interno", supplier: "Proveedor", audit: "Auditoría", other: "Otro",
+  customer_complaint: "Reclamación de cliente", internal: "Detección en planta", supplier: "Proveedor", audit: "Auditoría", other: "Otro",
 };
 export const DISCIPLINE_STATUS: Record<string, string> = {
   not_started: "Sin iniciar", in_progress: "En curso", pending_review: "En revisión", approved: "Aprobada", blocked: "Bloqueada",
@@ -79,4 +79,25 @@ Object.assign(EVENT, {
   "lesson.superseded": "Lección sustituida", "lesson.retired": "Lección retirada", "lesson.revision_started": "Nueva revisión de lección",
   "lesson.applied": "Lección reutilizada", "document.issued": "Documento emitido", "document.downloaded": "Documento descargado",
   "integrity.verified": "Integridad verificada", "lesson.photos_changed": "Fotos antes/después de la lección",
+});
+export const CASE_TYPE: Record<string, string> = { internal: "Interno", external: "Externo" };
+// Orígenes válidos por tipo de 8D.
+export const SOURCES_BY_TYPE: Record<string, string[]> = {
+  external: ["customer_complaint", "other"],
+  internal: ["internal", "supplier", "audit", "other"],
+};
+export const SEGMENTS = ["OEM", "OES", "AM"];
+// Sugerencias para «Cliente»: armadoras automotrices (el campo admite otro nombre).
+export const OEM_CUSTOMERS = ["Ford", "General Motors", "Toyota", "Stellantis", "Nissan", "Honda", "Volkswagen", "BMW",
+  "Mercedes-Benz", "Hyundai", "Kia", "Mazda", "Tesla"];
+export const DISPOSITION: Record<string, string> = {
+  released: "Liberado", rework: "Retrabajo", scrap: "Desecho", returned: "Devuelto", on_hold: "Retenido",
+};
+export const MILESTONE_STATUS: Record<string, string> = { on_time: "A tiempo", late: "Tarde", pending: "En plazo", overdue: "Vencido" };
+export const EMAIL_EVENT: Record<string, string> = {
+  containment_started: "Aviso a logística", alert_issued: "Alerta emitida", test: "Prueba",
+};
+Object.assign(EVENT, {
+  "containment.started": "Contención iniciada (aviso a logística)", "containment.notified": "Aviso a logística reenviado",
+  "containment.lot_added": "Lote revisado", "containment.lot_deleted": "Lote eliminado", "containment.ended": "Contención finalizada",
 });
