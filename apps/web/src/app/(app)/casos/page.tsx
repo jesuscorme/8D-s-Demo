@@ -1,19 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorText, useApi } from "@/lib/api";
-import { CASE_STATUS, CASE_TYPE, OEM_CUSTOMERS, SEGMENTS, SEVERITY, SOURCE, SOURCES_BY_TYPE, fmtDate } from "@/lib/labels";
-import type { Case, CaseSummary, Plant } from "@/lib/types";
-import { Badge, CaseStatus, Empty, ErrorBox, Field, Loading, Modal, Severity } from "@/components/ui";
+import { CASE_STATUS, CASE_TYPE, OEM_CUSTOMERS, SEGMENTS, SEVERITY, SOURCE, SOURCES_BY_TYPE, todayISO } from "@/lib/labels";
+import type { Case, IssuedDocument, Plant, RegisterRow } from "@/lib/types";
+import { Empty, ErrorBox, Field, Loading, Modal } from "@/components/ui";
 import { useCan } from "@/components/Shell";
+import { RegisterTable } from "@/components/dashboard/RegisterTable";
 
 function NewCase({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const plants = useApi<Plant[]>("/plants");
   const [form, setForm] = useState({ plant_id: "", title: "", case_type: "", severity: "medium", source_type: "", part_number: "",
-    customer_name: "", process_name: "", market_segment: "", main_defect: "", report_date: new Date().toISOString().slice(0, 10) });
+    customer_name: "", process_name: "", market_segment: "", main_defect: "", report_date: todayISO() });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -58,7 +58,7 @@ function NewCase({ onClose }: { onClose: () => void }) {
             {Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
           <Field label="Origen"><select value={form.source_type} onChange={set("source_type")} disabled={!form.case_type}>
             <option value="">Seleccionar…</option>{(SOURCES_BY_TYPE[form.case_type] ?? []).map((k) => <option key={k} value={k}>{SOURCE[k]}</option>)}</select></Field>
-          <Field label="Fecha de reporte" required><input type="date" value={form.report_date} onChange={set("report_date")} max={new Date().toISOString().slice(0, 10)} required /></Field>
+          <Field label="Fecha de reporte" required><input type="date" value={form.report_date} onChange={set("report_date")} max={todayISO()} required /></Field>
           <Field label="Número de parte"><input value={form.part_number} onChange={set("part_number")} maxLength={100} /></Field>
           <Field label={form.case_type === "external" ? "Cliente" : "Cliente (opcional)"} required={form.case_type === "external"}>
             <input value={form.customer_name} onChange={set("customer_name")} maxLength={200} required={form.case_type === "external"}
@@ -77,63 +77,69 @@ function NewCase({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Todos los 8D con sus hitos (concentrado): búsqueda, filtros y exportación a Excel. */
+function CaseList() {
+  const canExport = useCan("report.export");
+  const plants = useApi<Plant[]>("/plants");
+  const [q, setQ] = useState("");
+  const [f, setF] = useState({ q: "", case_type: "", status: "", plant_id: "", date_from: "", date_to: "" });
+  useEffect(() => {
+    const t = setTimeout(() => setF((x) => ({ ...x, q: q.trim() })), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  const qs = new URLSearchParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)));
+  const { data, error, loading, reload } = useApi<{ rows: RegisterRow[] }>(`/reports/register?${qs}`);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; id?: string } | null>(null);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const rows = data?.rows ?? [];
+  const late = rows.filter((r) => r.milestones.some((m) => m.status === "late" || m.status === "overdue")).length;
+  const filtered = Object.values(f).some(Boolean);
+
+  async function exportExcel() {
+    try {
+      const d = await api<IssuedDocument>("/exports/register", { body: Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v || null])) });
+      setMsg({ ok: true, text: `${d.file_name} generado.`, id: d.id });
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head" style={{ flexWrap: "wrap" }}>
+        <input placeholder="Buscar folio, falla, parte, cliente, defecto…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 280 }} aria-label="Buscar" />
+        <select value={f.case_type} onChange={set("case_type")} style={{ maxWidth: 160 }} aria-label="Tipo"><option value="">Internos y externos</option>
+          {Object.entries(CASE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <select value={f.status} onChange={set("status")} style={{ maxWidth: 160 }} aria-label="Estado"><option value="">Todos los estados</option>
+          {Object.entries(CASE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <select value={f.plant_id} onChange={set("plant_id")} style={{ maxWidth: 170 }} aria-label="Planta"><option value="">Todas las plantas</option>
+          {plants.data?.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}</select>
+        <label className="row small">Reporte desde <input type="date" value={f.date_from} onChange={set("date_from")} style={{ width: 150 }} /></label>
+        <label className="row small">hasta <input type="date" value={f.date_to} onChange={set("date_to")} style={{ width: 150 }} /></label>
+        <span className="right row small muted">{rows.length} 8D · {late} con hitos tarde o vencidos
+          {canExport && <button className="btn sm" onClick={exportExcel}>Exportar a Excel</button>}</span>
+      </div>
+      {msg && <div style={{ padding: "0 18px 12px" }}><div className={`notice ${msg.ok ? "ok" : "error"}`}>{msg.text}{msg.id && <> <a href={`/api/documents/${msg.id}/content`}>Descargar</a></>}</div></div>}
+      <ErrorBox error={error} onRetry={reload} />
+      {loading && !data ? <div className="card-pad"><Loading /></div> : !rows.length && !filtered ? (
+        <Empty title="Sin casos">Crea el primer caso 8D.</Empty>
+      ) : <RegisterTable rows={rows} />}
+    </div>
+  );
+}
+
 function CasesPage() {
   const params = useSearchParams();
   const canCreate = useCan("case.create");
-  const [q, setQ] = useState("");
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
-  const [severity, setSeverity] = useState("");
-  const [caseType, setCaseType] = useState("");
-  const [mine, setMine] = useState(params.get("mine") === "1");
   const [creating, setCreating] = useState(params.get("nuevo") === "1");
-  const qs = new URLSearchParams({ ...(query && { q: query }), ...(status && { status }), ...(severity && { severity }), ...(caseType && { case_type: caseType }), ...(mine && { mine: "true" }) });
-  const { data, error, loading, reload } = useApi<CaseSummary[]>(`/cases?${qs}`);
-
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(q.trim()), 300);
-    return () => clearTimeout(t);
-  }, [q]);
 
   return (
     <>
       <div className="page-head">
-        <div><h1>Casos 8D</h1><div className="sub">Expedientes de tu organización</div></div>
+        <div><h1>Casos 8D</h1><div className="sub">Expedientes con sus hitos: D3 24 h · D4 48 h · D5–D7 7 días · D8 14 días desde la fecha de reporte</div></div>
         <div className="actions">{canCreate && <button className="btn primary" onClick={() => setCreating(true)}>+ Nuevo caso</button>}</div>
       </div>
-      <div className="card">
-        <div className="card-head" style={{ flexWrap: "wrap" }}>
-          <input placeholder="Buscar por folio, título, parte, cliente…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 320 }} aria-label="Buscar" />
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ maxWidth: 170 }} aria-label="Estado">
-            <option value="">Todos los estados</option>{Object.entries(CASE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ maxWidth: 170 }} aria-label="Severidad">
-            <option value="">Toda severidad</option>{Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-          <select value={caseType} onChange={(e) => setCaseType(e.target.value)} style={{ maxWidth: 160 }} aria-label="Tipo">
-            <option value="">Internos y externos</option>{Object.entries(CASE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-          <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} style={{ width: "auto" }} />Solo míos</label>
-        </div>
-        <ErrorBox error={error} onRetry={reload} />
-        {loading && !data ? <div className="card-pad"><Loading /></div> : data && data.length === 0 ? (
-          <Empty title="Sin casos">{query || status || severity || mine ? "Ningún caso coincide con los filtros." : "Crea el primer caso 8D."}</Empty>
-        ) : data && (
-          <div className="table-wrap"><table>
-            <thead><tr><th>Folio</th><th>Tipo</th><th>Título</th><th>Planta</th><th>Parte</th><th>Cliente</th><th>Severidad</th><th>Disciplina</th><th>Estado</th><th>Responsable</th><th>Actualizado</th></tr></thead>
-            <tbody>{data.map((c) => (
-              <tr key={c.id}>
-                <td className="mono"><Link href={`/casos/${c.id}`}>{c.folio}</Link></td>
-                <td><Badge tone={c.case_type === "external" ? "red" : "blue"}>{CASE_TYPE[c.case_type]}</Badge></td>
-                <td>{c.title}{c.is_demo && <> <Badge tone="amber">Demo</Badge></>}</td>
-                <td>{c.plant_code}</td><td>{c.part_number ?? "—"}</td><td>{c.customer_name ?? "—"}</td>
-                <td><Severity value={c.severity} /></td>
-                <td><Badge tone="navy">{c.current_discipline ?? "—"}</Badge></td>
-                <td><CaseStatus status={c.status} /></td>
-                <td>{c.owner_name ?? "—"}</td>
-                <td className="muted small">{fmtDate(c.updated_at, true)}</td>
-              </tr>))}
-            </tbody>
-          </table></div>
-        )}
-      </div>
+      <CaseList />
       {creating && <NewCase onClose={() => setCreating(false)} />}
     </>
   );

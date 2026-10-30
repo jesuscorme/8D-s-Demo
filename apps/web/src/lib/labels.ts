@@ -33,6 +33,9 @@ export const EVENT: Record<string, string> = {
   "cause.validated": "Validación de causa", "comment.created": "Comentario",
 };
 
+/** Fecha de hoy en la zona horaria del navegador (YYYY-MM-DD); toISOString() da la de UTC. */
+export const todayISO = () => new Date().toLocaleDateString("en-CA");
+
 export function fmtDate(value: string | null | undefined, withTime = false): string {
   if (!value) return "—";
   const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);

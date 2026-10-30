@@ -9,7 +9,7 @@ Copia de la base de demostración local (29-oct-2026) para cargarla en otra inst
 | `manifest.json` | Orden, filas esperadas por tabla y tablas excluidas. |
 | `load_seed.py` | Cargador: una sola transacción y verificación del número de filas de cada tabla. |
 
-Datos: 1 organización, 2 plantas, 8 usuarios (6 activos), 27 casos 8D, 40 revisiones de alerta, 20 lecciones y la bitácora.
+Datos: 1 organización, 2 plantas, 11 usuarios (9 activos), 27 casos 8D, 40 revisiones de alerta, 20 lecciones y la bitácora.
 
 No incluye: sesiones, intentos de inicio de sesión, bandeja de correos, `schema_migrations`, hashes de contraseña ni
 correos reales (el destinatario de avisos es `avisos@demo.local`). La bitácora excluye los eventos de casos y
@@ -18,7 +18,7 @@ entidades eliminados y los de usuarios retirados.
 ## Carga
 
 1. Aplica las migraciones `db/migrations/0001–0010` a la base de destino.
-2. Carga los datos (la contraseña se asigna a los 6 usuarios activos, `*@demo.local`):
+2. Carga los datos (la contraseña se asigna a los 9 usuarios activos, `*@demo.local`):
 
    ```
    pip install "psycopg[binary]"

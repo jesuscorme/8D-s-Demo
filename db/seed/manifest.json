@@ -39,14 +39,14 @@
       "order": 6,
       "table": "users",
       "file": "06_users.csv",
-      "rows": 8,
+      "rows": 11,
       "self_ref": []
     },
     {
       "order": 7,
       "table": "audit_events",
       "file": "07_audit_events.csv",
-      "rows": 1723,
+      "rows": 1732,
       "self_ref": []
     },
     {
@@ -74,7 +74,7 @@
       "order": 11,
       "table": "user_roles",
       "file": "11_user_roles.csv",
-      "rows": 8,
+      "rows": 11,
       "self_ref": []
     },
     {
@@ -102,7 +102,7 @@
       "order": 15,
       "table": "case_team",
       "file": "15_case_team.csv",
-      "rows": 108,
+      "rows": 127,
       "self_ref": []
     },
     {

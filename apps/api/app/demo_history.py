@@ -83,7 +83,27 @@ CASES = [
 ]
 
 
+# Líderes de 8D (ficticios) para el gráfico «8D por responsable»; el caso i lo lidera LEADERS[LEAD[i]].
+LEADERS = [("ingenieria", None), ("laura.mendez", "Laura Méndez"), ("carlos.ruiz", "Carlos Ruiz"), ("ana.torres", "Ana Torres")]
+LEAD = [1, 0, 2, 1, 3, 0, 1, 2, 1, 0, 3, 1, 2, 1, 0, 1, 2, 3, 1, 1, 2, 1, 3]
+
+
 class History(Demo):
+    def __init__(self, app, password: str):
+        super().__init__(app, password)
+        for key, name in LEADERS:
+            if name and key not in self.uid:
+                user = self.call("admin", "POST", "/admin/users", json={
+                    "email": f"{key}@demo.local", "display_name": name, "password": password, "roles": ["engineer"]})
+                self.uid[key] = user["id"]
+
+    def lead(self, cid: str, spec):
+        """Líder del caso según LEAD; ingeniería sigue en el equipo y captura las disciplinas."""
+        key = LEADERS[LEAD[CASES.index(spec)]][0]
+        members = [{"user_id": self.uid[key], "team_role": "leader"}]
+        members += [{"user_id": self.uid[k], "team_role": "member"} for k in ("ingenieria", "produccion", "mantenimiento") if k != key]
+        self.call("ing", "PUT", f"/cases/{cid}/team", json={"members": [*members, {"user_id": self.uid["calidad"], "team_role": "champion"}]})
+
     def build(self, spec) -> str:
         title, part, process, defect, customer, source, segment, plant, severity, reported, upto, pace = spec
         reported = date.fromisoformat(reported)
@@ -102,7 +122,7 @@ class History(Demo):
         self.content(cid, "D0", emergency_response="Retención del inventario sospechoso y revisión 100% antes de embarque.",
                      justification=f"{'Reclamación de ' + customer if external else 'Hallazgo interno'}: defecto «{defect.lower()}» en {part}.")
         self.approve(cid, "D0")
-        self.team(cid)
+        self.lead(cid, spec)
         case = self.approve(cid, "D1")
         qty = 6 + len(title) % 15
         self.call("ing", "PATCH", f"/cases/{cid}", json={

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, errorText, useApi } from "@/lib/api";
 import {
-  ACTION_STATUS, ACTION_TYPE, CRITERION_STATUS, EFFECT, LESSON_STATUS, OUTCOME, THRESHOLD, UPDATE_STATUS, UPDATE_TYPE, fmtDate,
+  ACTION_STATUS, ACTION_TYPE, CRITERION_STATUS, EFFECT, LESSON_STATUS, OUTCOME, THRESHOLD, UPDATE_STATUS, UPDATE_TYPE, fmtDate, todayISO,
 } from "@/lib/labels";
 import type { Action, Case, Cause, Check, Effectiveness, Lesson, SystemUpdate, User } from "@/lib/types";
 import { Badge, Empty, ErrorBox, Field, Loading, Modal } from "@/components/ui";
@@ -192,7 +192,7 @@ function NewCheck({ caseId, actions, criteria, onClose, onSaved }: { caseId: str
       <Field label="Criterio aprobado" required><select value={f.criterion_id} onChange={set("criterion_id")}>{criteria.map((k) => <option key={k.id} value={k.id}>{k.description}</option>)}</select></Field>
       <div className="grid g2">
         <Field label="Inicio del periodo" required><input type="date" value={f.period_start} onChange={set("period_start")} required /></Field>
-        <Field label="Fin del periodo" required><input type="date" value={f.period_end} onChange={set("period_end")} required max={new Date().toISOString().slice(0, 10)} /></Field>
+        <Field label="Fin del periodo" required><input type="date" value={f.period_end} onChange={set("period_end")} required max={todayISO()} /></Field>
         <Field label="Denominador (cantidad)" hint="Vacío = sin dato; no se toma como cero."><input type="number" min={0} value={f.denominator_quantity} onChange={set("denominator_quantity")} /></Field>
         <Field label="Defectos observados" hint="Vacío = sin dato; no se toma como cero."><input type="number" min={0} value={f.defect_quantity} onChange={set("defect_quantity")} /></Field>
         <Field label="Días sin producción en el periodo"><input type="number" min={0} value={f.days_without_production} onChange={set("days_without_production")} /></Field>
@@ -333,7 +333,7 @@ function NewUpdate({ caseId, onClose, onSaved }: { caseId: string; onClose: () =
 }
 
 function CompleteUpdate({ u, onClose, onSaved }: { u: SystemUpdate; onClose: () => void; onSaved: (r: SystemUpdate[]) => void }) {
-  const { f, set } = useForm({ status: "completed", completed_on: new Date().toISOString().slice(0, 10), evidence_notes: "" });
+  const { f, set } = useForm({ status: "completed", completed_on: todayISO(), evidence_notes: "" });
   return (
     <Submitting title={`${UPDATE_TYPE[u.update_type]} ${u.document_reference}`} onClose={onClose} danger={f.status === "cancelled"}
       onSubmit={async () => onSaved(await api<SystemUpdate[]>(`/system-updates/${u.id}`, { method: "PATCH", body: f.status === "cancelled" ? { status: "cancelled" } : f }))}>

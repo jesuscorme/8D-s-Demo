@@ -12,7 +12,7 @@ async function login(browser: Browser, email: string): Promise<Page> {
   await page.fill('input[type="password"]', PASSWORD);
   await page.click('button:has-text("Entrar")');
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Concentrado de 8D" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "8D por responsable" })).toBeVisible();
   return page;
 }
 
@@ -71,7 +71,7 @@ test("ingeniería crea un caso, completa D0 y calidad lo aprueba", async ({ brow
   await expect(mgr.getByText("Documento emitido")).toBeVisible();
 });
 
-test("consulta solo lee y reportes muestran indicadores definidos", async ({ browser }) => {
+test("consulta solo lee", async ({ browser }) => {
   const viewer = await login(browser, "consulta@demo.local");
   await viewer.goto("/casos");
   await expect(viewer.getByRole("button", { name: "+ Nuevo caso" })).toHaveCount(0);
@@ -81,11 +81,8 @@ test("consulta solo lee y reportes muestran indicadores definidos", async ({ bro
   const forbidden = await viewer.request.post("/api/cases", { headers: { "x-d8-client": "web" }, data: { title: "x" } });
   expect(forbidden.status()).toBe(403);
 
-  await viewer.goto("/reportes");
-  await expect(viewer.getByText("Casos abiertos").first()).toBeVisible();
-  await expect(viewer.getByText("Datos insuficientes").first()).toBeVisible();
-  await viewer.getByText("Definición de los indicadores").click();
-  await expect(viewer.getByText("Tiempo de resolución").last()).toBeVisible();
+  await viewer.goto("/reportes");  // sección retirada: redirige a Casos 8D
+  await expect(viewer).toHaveURL(/\/casos$/);
   await viewer.goto("/lecciones");
   await expect(viewer.getByText("Lecciones publicadas.")).toBeVisible();
 

@@ -250,9 +250,6 @@ svg [role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 2px;
 .kpi { cursor: pointer; text-align: left; border: 1px solid var(--line); transition: box-shadow .12s, border-color .12s, opacity .12s; font: inherit; color: inherit; }
 .kpi:hover { border-color: var(--accent); }
 .kpi.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.slicers { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 14px 18px; }
-.slicers label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.slicers select { min-width: 150px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { border: 0; background: #fff; padding: 7px 12px; font: inherit; cursor: pointer; color: var(--muted); }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -262,4 +259,4 @@ svg [role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 2px;
 .fchip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .dash3b { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
 @media (max-width: 1100px) { .dash3b { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-@media (max-width: 720px) { .dash3b { grid-template-columns: 1fr; } .slicers > label:first-child { flex-basis: 100%; } .seg { display: flex; } .seg button { flex: 1; } .slicers select { min-width: 0; width: 100%; } .slicers label { flex: 1 1 140px; } }
+@media (max-width: 720px) { .dash3b { grid-template-columns: 1fr; } }
