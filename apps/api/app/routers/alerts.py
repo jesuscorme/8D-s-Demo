@@ -93,11 +93,7 @@ def _detail(conn, p: Principal, alert_id: UUID) -> dict:
 
 def _list_sql(where: str) -> str:
     return f"""select a.id, a.alert_number, a.revision, a.status, a.failure_type, a.title, a.issued_at, a.created_at,
-                      c.id as case_id, c.folio as case_folio, d.id as document_id,
-                      (select ap.attachment_id from alert_photos ap where ap.alert_id = a.id and ap.kind = 'nok'
-                       order by ap.sort_order limit 1) as nok_photo_id,
-                      (select ap.attachment_id from alert_photos ap where ap.alert_id = a.id and ap.kind = 'ok'
-                       order by ap.sort_order limit 1) as ok_photo_id
+                      c.id as case_id, c.folio as case_folio, d.id as document_id
                from quality_alerts a join cases_8d c on c.id = a.case_id
                left join documents d on d.alert_id = a.id
                where {where} order by a.alert_number desc, a.revision desc"""
