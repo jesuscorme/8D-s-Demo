@@ -1,0 +1,3 @@
+# Seed: los CSV se cargan byte a byte (sin conversión de finales de línea)
+db/seed/csv/*.csv -text
+db/seed/files/** -text

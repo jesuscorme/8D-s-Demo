@@ -1,0 +1,7 @@
+id,code,name_es,name_en,display_order
+d28be9d8-95d4-427d-b292-4c56d565e999,METHOD,Método,Method,1
+1205b532-0dcb-483e-93d6-b5f8be881a01,MACHINE,Máquina,Machine,2
+cde7d2cd-5bc6-48df-b89b-17548b9c70a4,MATERIAL,Material,Material,3
+ef83cc64-b1fd-465b-9a60-29e28ecc4920,MANPOWER,Mano de obra,Manpower,4
+c91d783c-2ede-4b21-8cb4-61711621f247,MEASUREMENT,Medición,Measurement,5
+a6e9945d-9b68-4434-99cb-e486ea6139b1,ENVIRONMENT,Medio ambiente,Mother Nature / Environment,6

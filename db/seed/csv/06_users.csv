@@ -1,0 +1,9 @@
+id,organization_id,email,display_name,password_hash,auth_provider,auth_subject,is_active,created_at
+fc388ae5-225a-40d0-9a49-178a9c4b6b22,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,admin@demo.local,Administración Demo,,,,t,2026-10-27 15:59:29.540458-06
+6e3406e6-e645-46aa-9a5d-02f87003f319,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,calidad@demo.local,Gerencia de Calidad Demo,,,,t,2026-10-27 15:59:29.540458-06
+fc2e45bf-6bba-4104-98f8-aadaa598944c,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,ingenieria@demo.local,Ingeniería de Calidad Demo,,,,t,2026-10-27 15:59:29.540458-06
+1fb09717-bc6f-44ab-9304-799b42616b0c,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,produccion@demo.local,Supervisión de Producción Demo,,,,t,2026-10-27 15:59:29.540458-06
+256ce070-2214-4922-b477-a236ff2a0162,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,mantenimiento@demo.local,Mantenimiento Demo,,,,t,2026-10-27 15:59:29.540458-06
+bb27ce1c-489a-416f-b9c5-d3bfe9b0242f,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,consulta@demo.local,Consulta Demo,,,,t,2026-10-27 15:59:29.540458-06
+3d48c356-e3c3-4304-9e15-d4d6ab94cd37,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,retirado-3d48c356@demo.local,Usuario retirado,,,,f,2026-10-27 21:47:38.195373-06
+b14b7fdf-5b1e-4a89-b8e7-80e79f5cab80,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,retirado-b14b7fdf@demo.local,Usuario retirado,,,,f,2026-10-27 21:47:38.252457-06

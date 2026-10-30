@@ -1,0 +1,5 @@
+id,organization_id,code,name
+1c6f5fdf-abc4-4300-9216-61160e6d1462,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,admin,Administrador
+728e6503-7231-412a-993c-544054dfad48,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,quality_manager,Gerente de calidad
+751298c0-d1a8-4705-8fe3-a1aeddc52050,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,engineer,Ingeniero de calidad
+b5f17283-c09a-4a77-adc3-2e4b190acfe5,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,viewer,Consulta

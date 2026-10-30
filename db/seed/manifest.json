@@ -1,0 +1,227 @@
+{
+  "tables": [
+    {
+      "order": 1,
+      "table": "ishikawa_categories",
+      "file": "01_ishikawa_categories.csv",
+      "rows": 6,
+      "self_ref": []
+    },
+    {
+      "order": 2,
+      "table": "organizations",
+      "file": "02_organizations.csv",
+      "rows": 1,
+      "self_ref": []
+    },
+    {
+      "order": 3,
+      "table": "counters",
+      "file": "03_counters.csv",
+      "rows": 23,
+      "self_ref": []
+    },
+    {
+      "order": 4,
+      "table": "plants",
+      "file": "04_plants.csv",
+      "rows": 2,
+      "self_ref": []
+    },
+    {
+      "order": 5,
+      "table": "roles",
+      "file": "05_roles.csv",
+      "rows": 4,
+      "self_ref": []
+    },
+    {
+      "order": 6,
+      "table": "users",
+      "file": "06_users.csv",
+      "rows": 8,
+      "self_ref": []
+    },
+    {
+      "order": 7,
+      "table": "audit_events",
+      "file": "07_audit_events.csv",
+      "rows": 1723,
+      "self_ref": []
+    },
+    {
+      "order": 8,
+      "table": "cases_8d",
+      "file": "08_cases_8d.csv",
+      "rows": 27,
+      "self_ref": []
+    },
+    {
+      "order": 9,
+      "table": "cause_ideas",
+      "file": "09_cause_ideas.csv",
+      "rows": 24,
+      "self_ref": []
+    },
+    {
+      "order": 10,
+      "table": "notification_recipients",
+      "file": "10_notification_recipients.csv",
+      "rows": 2,
+      "self_ref": []
+    },
+    {
+      "order": 11,
+      "table": "user_roles",
+      "file": "11_user_roles.csv",
+      "rows": 8,
+      "self_ref": []
+    },
+    {
+      "order": 12,
+      "table": "case_comments",
+      "file": "12_case_comments.csv",
+      "rows": 0,
+      "self_ref": []
+    },
+    {
+      "order": 13,
+      "table": "case_containment",
+      "file": "13_case_containment.csv",
+      "rows": 24,
+      "self_ref": []
+    },
+    {
+      "order": 14,
+      "table": "case_disciplines",
+      "file": "14_case_disciplines.csv",
+      "rows": 243,
+      "self_ref": []
+    },
+    {
+      "order": 15,
+      "table": "case_team",
+      "file": "15_case_team.csv",
+      "rows": 108,
+      "self_ref": []
+    },
+    {
+      "order": 16,
+      "table": "containment_actions",
+      "file": "16_containment_actions.csv",
+      "rows": 26,
+      "self_ref": []
+    },
+    {
+      "order": 17,
+      "table": "containment_lots",
+      "file": "17_containment_lots.csv",
+      "rows": 49,
+      "self_ref": []
+    },
+    {
+      "order": 18,
+      "table": "effectiveness_criteria",
+      "file": "18_effectiveness_criteria.csv",
+      "rows": 22,
+      "self_ref": []
+    },
+    {
+      "order": 19,
+      "table": "ishikawa_causes",
+      "file": "19_ishikawa_causes.csv",
+      "rows": 75,
+      "self_ref": [
+        "parent_cause_id"
+      ]
+    },
+    {
+      "order": 20,
+      "table": "lessons_learned",
+      "file": "20_lessons_learned.csv",
+      "rows": 20,
+      "self_ref": []
+    },
+    {
+      "order": 21,
+      "table": "quality_alerts",
+      "file": "21_quality_alerts.csv",
+      "rows": 40,
+      "self_ref": []
+    },
+    {
+      "order": 22,
+      "table": "cause_validations",
+      "file": "22_cause_validations.csv",
+      "rows": 71,
+      "self_ref": []
+    },
+    {
+      "order": 23,
+      "table": "corrective_actions",
+      "file": "23_corrective_actions.csv",
+      "rows": 43,
+      "self_ref": []
+    },
+    {
+      "order": 24,
+      "table": "documents",
+      "file": "24_documents.csv",
+      "rows": 52,
+      "self_ref": [
+        "superseded_by"
+      ]
+    },
+    {
+      "order": 25,
+      "table": "lesson_applications",
+      "file": "25_lesson_applications.csv",
+      "rows": 1,
+      "self_ref": []
+    },
+    {
+      "order": 26,
+      "table": "effectiveness_checks",
+      "file": "26_effectiveness_checks.csv",
+      "rows": 23,
+      "self_ref": []
+    },
+    {
+      "order": 27,
+      "table": "system_updates",
+      "file": "27_system_updates.csv",
+      "rows": 57,
+      "self_ref": []
+    },
+    {
+      "order": 28,
+      "table": "attachments",
+      "file": "28_attachments.csv",
+      "rows": 66,
+      "self_ref": []
+    },
+    {
+      "order": 29,
+      "table": "alert_photos",
+      "file": "29_alert_photos.csv",
+      "rows": 32,
+      "self_ref": []
+    },
+    {
+      "order": 30,
+      "table": "lesson_photos",
+      "file": "30_lesson_photos.csv",
+      "rows": 38,
+      "self_ref": []
+    }
+  ],
+  "files": 118,
+  "excluded_tables": [
+    "email_outbox",
+    "login_attempts",
+    "schema_migrations",
+    "sessions"
+  ],
+  "excluded_rows": "audit_events de casos y entidades eliminados y de usuarios retirados",
+  "passwords_included": false
+}

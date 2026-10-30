@@ -1,0 +1,3 @@
+id,organization_id,plant_id,event,email,name,created_at
+d8ac2329-5888-4466-b74f-9f3a5d457104,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,,containment_started,avisos@demo.local,Avisos demo,2026-10-29 08:20:04.045534-06
+654e439c-6894-4606-b99a-9f7b64b5efce,3ba2d0e0-1419-4d92-9b98-9ab316c6a1fa,,alert_issued,avisos@demo.local,Avisos demo,2026-10-29 08:20:04.045534-06
