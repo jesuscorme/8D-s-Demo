@@ -132,6 +132,8 @@ export type AlertSummary = {
   case_id: string;
   case_folio: string;
   document_id: string | null;
+  nok_photo_id: string | null;
+  ok_photo_id: string | null;
 };
 
 export type Alert = {

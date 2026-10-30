@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi.testclient import TestClient
 
 from app.db import database_url, setting
-from app.demo_data import Demo, photo
+from app.demo_data import Demo
 from app.main import create_app
 
 CODES = ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]
@@ -128,6 +128,7 @@ class History(Demo):
             "when_happened": f"{reported:%d-%m-%Y}", "where_happened": f"{process}", "who_is_affected": who,
             "how_detected": "Inspección visual", "affected_quantity": qty * 60,
             "containment_summary": "Retención y revisión 100% del inventario"})
+        nok, good = self.alert_photos(cid, alert["id"], defect)
         self.call("mgr", "POST", f"/alerts/{alert['id']}/issue")
         half = qty * 30
         self.contain(cid, [(f"L-{part}-A", "Almacén PT", half, qty // 2, "rework"), (f"L-{part}-B", "Tránsito", half, qty - qty // 2, "scrap")],
@@ -197,11 +198,6 @@ class History(Demo):
         if stop < 8:
             return cid
 
-        kind = "crack" if defect == "Grieta" else "burr"
-        nok = self.call("ing", "POST", f"/cases/{cid}/attachments", data={"purpose": "photo", "description": "Ilustración NOK"},
-                        files={"file": ("nok.png", photo(False, kind), "image/png")})
-        good = self.call("ing", "POST", f"/cases/{cid}/attachments", data={"purpose": "photo", "description": "Ilustración OK"},
-                         files={"file": ("ok.png", photo(True, kind), "image/png")})
         lesson = self.call("ing", "POST", f"/cases/{cid}/lessons")
         self.call("ing", "PATCH", f"/lessons/{lesson['id']}", json={
             "before_summary": f"{qty} piezas con {defect.lower()}; causa: {root[1].lower()}.",

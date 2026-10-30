@@ -8,7 +8,7 @@ import sys
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from app.db import database_url, setting
 from app.main import create_app
@@ -18,22 +18,87 @@ TITLES = ["Rebaba en carcasa de aluminio 4410-A", "Fuga en conector rápido de m
 FORD_TITLE = "Grieta en brida de soporte de motor 5560-D"
 
 
+# Leyenda de la ilustración por tipo de defecto: (NOK, OK).
+CAPTIONS = {
+    "burr": ("rebaba en el borde", "borde limpio"), "crack": ("grieta junto al barreno", "pieza sin grieta"),
+    "porosity": ("poros en la superficie", "superficie sin poros"), "leak": ("fuga en la unión", "unión hermética"),
+    "dimensional": ("barreno fuera de posición", "barreno en posición nominal"),
+    "missing": ("tornillo faltante", "4 tornillos presentes"), "scratch": ("rayones en la cara visible", "cara visible sin rayones"),
+    "label": ("etiqueta con número de parte incorrecto", "etiqueta correcta"),
+    "torque": ("tornillo sin apriete", "tornillo con torque y marca"), "contamination": ("residuos en la pieza", "pieza limpia"),
+}
+# Defecto principal (concentrado) → ilustración.
+DEFECT_KIND = {"Rebaba": "burr", "Grieta": "crack", "Porosidad": "porosity", "Fuga": "leak", "Dimensional": "dimensional",
+               "Faltante": "missing", "Rayón": "scratch", "Etiqueta": "label", "Torque": "torque", "Contaminación": "contamination"}
+
+
 def photo(ok: bool, defect: str = "burr") -> bytes:
-    """Ilustración simple de la pieza (no es una fotografía real). defect: burr (rebaba) o crack (grieta)."""
+    """Ilustración simple de la pieza (no es una fotografía real). defect: una clave de CAPTIONS."""
+    red, green, dark = (198, 40, 40), (31, 138, 76), (90, 98, 110)
     img = Image.new("RGB", (640, 420), (236, 239, 244))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((120, 90, 520, 330), 24, fill=(160, 168, 180), outline=(90, 98, 110), width=6)
-    d.ellipse((270, 160, 370, 260), fill=(236, 239, 244), outline=(90, 98, 110), width=5)
-    if not ok and defect == "crack":
-        d.line([(370, 205), (405, 190), (420, 222), (455, 210), (470, 245), (505, 238)], fill=(198, 40, 40), width=6)
-        d.text((20, 380), "Ilustración: grieta junto al barreno (NOK)", fill=(198, 40, 40))
-    elif not ok:
-        for x in range(130, 510, 22):
-            d.polygon([(x, 90), (x + 11, 62), (x + 22, 90)], fill=(198, 40, 40))
-        d.text((20, 380), "Ilustración: rebaba en el borde (NOK)", fill=(198, 40, 40))
+    d.rounded_rectangle((120, 90, 520, 330), 24, fill=(160, 168, 180), outline=dark, width=6)
+    hole = (300, 160, 400, 260) if not ok and defect == "dimensional" else (270, 160, 370, 260)
+    d.ellipse(hole, fill=(236, 239, 244), outline=dark, width=5)
+    if defect in ("missing", "torque"):
+        for i, (x, y) in enumerate([(165, 130), (475, 130), (165, 290), (475, 290)]):
+            if not ok and defect == "missing" and i == 3:
+                d.ellipse((x - 16, y - 16, x + 16, y + 16), fill=(70, 76, 86))
+                d.ellipse((x - 30, y - 30, x + 30, y + 30), outline=red, width=4)
+                continue
+            d.regular_polygon((x, y, 18), 6, fill=(210, 214, 220), outline=dark)
+            if defect == "torque" and i == 3:
+                if ok:
+                    d.line([(x - 22, y + 2), (x + 22, y - 2)], fill=(230, 160, 0), width=4)  # marca de torque
+                else:
+                    d.arc((x - 34, y - 34, x + 34, y + 34), 200, 340, fill=red, width=4)
+                    d.text((x - 60, y + 26), "0 N·m", fill=red)
+    if not ok:
+        if defect == "crack":
+            d.line([(370, 205), (405, 190), (420, 222), (455, 210), (470, 245), (505, 238)], fill=red, width=6)
+        elif defect == "burr":
+            for x in range(130, 510, 22):
+                d.polygon([(x, 90), (x + 11, 62), (x + 22, 90)], fill=red)
+        elif defect == "porosity":
+            for x, y, r in [(180, 140, 7), (200, 165, 5), (222, 145, 9), (420, 270, 6), (440, 290, 8), (460, 262, 5), (190, 280, 6)]:
+                d.ellipse((x - r, y - r, x + r, y + r), fill=(60, 64, 72), outline=red, width=2)
+        elif defect == "leak":
+            d.line([(320, 260), (318, 330)], fill=(40, 110, 200), width=8)
+            for y in (345, 368):
+                d.ellipse((310, y, 326, y + 18), fill=(40, 110, 200))
+        elif defect == "dimensional":
+            d.ellipse((270, 160, 370, 260), outline=green, width=3)
+            d.line([(320, 290), (350, 290)], fill=red, width=3)
+            d.text((300, 298), "+0.4 mm", fill=red)
+        elif defect == "scratch":
+            for x in (160, 190, 225, 400, 430):
+                d.line([(x, 120), (x + 70, 300)], fill=(245, 245, 245), width=3)
+                d.line([(x + 2, 120), (x + 72, 300)], fill=red, width=1)
+        elif defect == "contamination":
+            for x, y in [(170, 130), (185, 300), (230, 120), (430, 140), (455, 300), (480, 210), (210, 210), (440, 250)]:
+                d.ellipse((x - 6, y - 4, x + 6, y + 4), fill=(92, 64, 40))
+    if defect == "label":
+        d.rectangle((150, 270, 300, 318), fill=(255, 255, 255), outline=dark, width=2)
+        d.text((160, 278), "P/N 8840-K" if ok else "P/N 8804-K", fill=(20, 20, 20))
+        d.text((160, 296), "LOTE L-1028", fill=(20, 20, 20))
+        if not ok:
+            d.line([(150, 270), (300, 318)], fill=red, width=4)
+    # Sello NOK / OK en la esquina para leerla sin la leyenda.
+    d.ellipse((560, 16, 620, 76), fill=green if ok else red)
+    if ok:
+        d.line([(574, 47), (587, 60), (607, 32)], fill=(255, 255, 255), width=7)
     else:
-        d.text((20, 380), "Ilustración: pieza sin defecto (OK)" if defect == "crack" else "Ilustración: borde limpio (OK)",
-               fill=(31, 138, 76))
+        d.line([(576, 32), (604, 60)], fill=(255, 255, 255), width=7)
+        d.line([(604, 32), (576, 60)], fill=(255, 255, 255), width=7)
+    nok_text, ok_text = CAPTIONS.get(defect, CAPTIONS["burr"])
+    font = ImageFont.load_default()  # la fuente por defecto escalable no trae acentos; se prefiere una del sistema
+    for name in ("arial.ttf", "DejaVuSans.ttf"):
+        try:
+            font = ImageFont.truetype(name, 22)
+            break
+        except OSError:
+            pass
+    d.text((20, 372), f"Ilustración: {ok_text} (OK)" if ok else f"Ilustración: {nok_text} (NOK)", fill=green if ok else red, font=font)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -82,6 +147,17 @@ class Demo:
                 "lot_number": lot, "location": location, "quantity_inspected": inspected,
                 "quantity_rejected": rejected, "disposition": disposition})
         self.call("prod", "POST", f"/cases/{cid}/containment-record/end", json={"result": "effective", "result_notes": result_notes})
+
+    def alert_photos(self, cid: str, alert_id: str, defect: str) -> tuple[dict, dict]:
+        """Sube las ilustraciones NOK/OK del defecto al caso y las asigna a la alerta en borrador."""
+        kind = DEFECT_KIND.get(defect, "burr")
+        nok = self.call("ing", "POST", f"/cases/{cid}/attachments", data={"purpose": "photo", "description": "Ilustración NOK"},
+                        files={"file": (f"{kind}_nok.png", photo(False, kind), "image/png")})
+        good = self.call("ing", "POST", f"/cases/{cid}/attachments", data={"purpose": "photo", "description": "Ilustración OK"},
+                         files={"file": (f"{kind}_ok.png", photo(True, kind), "image/png")})
+        self.call("ing", "PUT", f"/alerts/{alert_id}/photos", json={"photos": [
+            {"attachment_id": nok["id"], "kind": "nok"}, {"attachment_id": good["id"], "kind": "ok"}]})
+        return nok, good
 
     # ---- Caso 1: completo y cerrado ----------------------------------------------------------
     def case_closed(self):
@@ -415,6 +491,7 @@ class Demo:
         alert = self.call("ing", "POST", f"/cases/{cid}/alerts", json={"failure_type": "internal"})
         self.call("ing", "PATCH", f"/alerts/{alert['id']}", json={"where_happened": "Ensamble PLT2", "who_is_affected": "Línea de ensamble",
                                                                    "how_detected": "Prueba de caída de presión"})
+        self.alert_photos(cid, alert["id"], "Fuga")
         self.call("mgr", "POST", f"/alerts/{alert['id']}/issue")
         self.contain(cid, [("L-7720-0927", "Ensamble PLT2", 250, 7, "scrap"), ("L-7720-0928", "Almacén PT", 200, 5, "scrap")],
                      "450 conectores probados; 12 con fuga desechados. Lotes liberados con prueba 100%.")
@@ -475,6 +552,7 @@ class Demo:
             "due_date": "2026-10-24", "quantity_checked": 380, "quantity_rejected": 2})
         alert = self.call("ing", "POST", f"/cases/{cid}/alerts", json={"failure_type": "internal"})
         self.call("ing", "PATCH", f"/alerts/{alert['id']}", json={"where_happened": "Ensamble PLT1, estación de atornillado"})
+        self.alert_photos(cid, alert["id"], "Faltante")
         return cid
 
 
